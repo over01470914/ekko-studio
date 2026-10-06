@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "services": [
+    {
+      "id": "example-guide",
+      "name": "Example Guide",
+      "description": "Generic documentation destination; replace with a verified browser UI in your private registry.",
+      "url": "https://example.org/guide",
+      "icon": "globe",
+      "category": "Documentation",
+      "tags": ["example"],
+      "network": "public",
+      "enabled": true,
+      "sortOrder": 0,
+      "healthCheckEnabled": false
+    }
+  ]
+}

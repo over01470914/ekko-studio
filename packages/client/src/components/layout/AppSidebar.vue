@@ -58,6 +58,14 @@ function handleSidebarClick(event: MouseEvent) {
     <nav class="sidebar-nav">
       <RouteLinkItem
         class="nav-item"
+        :to="{ name: 'studio.serviceCenter' }"
+        :active="selectedKey === 'studio.serviceCenter'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM3 10h18M9 10v10M13 14h5M13 17h4" /></svg>
+        <span>{{ t('serviceCenter.title') }}</span>
+      </RouteLinkItem>
+      <RouteLinkItem
+        class="nav-item"
         :to="{ name: 'hermes.logs' }"
         :active="selectedKey === 'hermes.logs'"
       >

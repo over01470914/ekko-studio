@@ -10,6 +10,7 @@ type YamlUpdater<T = void> = (current: Record<string, any>) => Record<string, an
 export interface SafeWriteOptions {
   backup?: boolean
   backupPath?: string
+  mode?: number
 }
 
 export interface SafeYamlOptions extends SafeWriteOptions {
@@ -211,7 +212,7 @@ export class SafeFileStore {
     }
 
     try {
-      await writeFile(temp, content, 'utf-8')
+      await writeFile(temp, content, options.mode === undefined ? 'utf-8' : { encoding: 'utf-8', mode: options.mode })
       await rename(temp, target)
     } catch (err) {
       await rm(temp, { force: true }).catch(() => undefined)

@@ -1,6 +1,8 @@
 import { socialMessagesRu } from '../social-messages-locales'
+import { serviceCenterMessages } from '../service-center'
 
 export default {
+  serviceCenter: serviceCenterMessages.ru,
   jev: {
     browserAutomation: "Автоматизация встроенного браузера",
     browserAutomationHint: "Необязательные оценки используют сохранённое подключение JEV этого профиля со следующего запроса. В JEV передаются видимые подписи без введённых значений. При отключении, недоступности или неопределённости сохраняется обычный порядок работы.",

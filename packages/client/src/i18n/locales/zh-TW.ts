@@ -1,6 +1,8 @@
 import { socialMessagesZhTw } from '../social-messages'
+import { serviceCenterMessages } from '../service-center'
 
 export default {
+  serviceCenter: serviceCenterMessages['zh-TW'],
   jev: {
     browserAutomation: "內建瀏覽器自動化",
     browserAutomationHint: "選用判斷沿用目前 Profile 儲存的 JEV 連線，下次判斷生效。頁面可見標籤會傳送給 JEV，不包含輸入欄位的值。關閉、服務無法使用或判斷不確定時保留原有流程。",

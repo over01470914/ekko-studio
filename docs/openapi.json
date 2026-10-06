@@ -229,6 +229,10 @@
       "description": "In-memory Agent installation, version, and source status"
     },
     {
+      "name": "Service Center",
+      "description": "Studio service directory, personal favorites, health and local editor grants"
+    },
+    {
       "name": "Coding Agents",
       "description": "Coding agent installation, config, and runs"
     },
@@ -18891,6 +18895,684 @@
         ]
       }
     },
+    "/api/studio/service-center/catalog": {
+      "get": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Get catalog",
+        "description": "Active authenticated user; readers see only enabled services and their own favorites.",
+        "operationId": "listServiceCenterCatalog",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog snapshot and server-owned module capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revision",
+                    "services",
+                    "favorites",
+                    "health",
+                    "capabilities"
+                  ],
+                  "properties": {
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceCenterService"
+                      }
+                    },
+                    "favorites": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "health": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "state",
+                          "checkedAt",
+                          "latencyMs",
+                          "status"
+                        ],
+                        "properties": {
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "untested",
+                              "stale",
+                              "unapproved",
+                              "disabled",
+                              "healthy",
+                              "http_error",
+                              "redirected",
+                              "timeout",
+                              "unreachable",
+                              "blocked",
+                              "busy"
+                            ]
+                          },
+                          "checkedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "latencyMs": {
+                            "type": "integer",
+                            "nullable": true
+                          },
+                          "status": {
+                            "type": "integer",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "canManageServices",
+                        "canManageEditors"
+                      ],
+                      "properties": {
+                        "canManageServices": {
+                          "type": "boolean"
+                        },
+                        "canManageEditors": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/editors": {
+      "get": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Get editors",
+        "description": "Super administrator only; editor grants are separate from the public manifest.",
+        "operationId": "listServiceCenterEditors",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/editors/{id}": {
+      "put": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Update :id",
+        "description": "Super administrator only; target must be an active admin; audit grant and revoke.",
+        "operationId": "changeServiceCenterEditor",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "granted"
+                ],
+                "properties": {
+                  "granted": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/favorites/{id}": {
+      "put": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Update :id",
+        "description": "Active authenticated user; ID must name an enabled service and favorite belongs only to the caller.",
+        "operationId": "setServiceCenterFavorite",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "favorite"
+                ],
+                "properties": {
+                  "favorite": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/health/{id}": {
+      "post": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Create :id",
+        "description": "ID-only approved bounded server-side GET; does not prove the browser can open the service.",
+        "operationId": "checkServiceCenterHealth",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backend probe or explicit unapproved/disabled state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "state",
+                    "checkedAt",
+                    "latencyMs",
+                    "status"
+                  ],
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "untested",
+                        "stale",
+                        "unapproved",
+                        "disabled",
+                        "healthy",
+                        "http_error",
+                        "redirected",
+                        "timeout",
+                        "unreachable",
+                        "blocked",
+                        "busy"
+                      ]
+                    },
+                    "checkedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "latencyMs": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/studio/service-center/health/{id}/approval": {
+      "put": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Update approval",
+        "description": "Module editor only; explicit approval pinned to the registered health URL.",
+        "operationId": "approveServiceCenterHealth",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "approved"
+                ],
+                "properties": {
+                  "approved": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/import/confirm": {
+      "post": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Create confirm",
+        "description": "Module editor only; merge/upsert. Every conflict requires keep or overwrite. Never deletes unmentioned services.",
+        "operationId": "confirmServiceCenterImport",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "manifest",
+                  "conflicts"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "manifest": {
+                    "$ref": "#/components/schemas/ServiceCenterManifest"
+                  },
+                  "conflicts": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "keep",
+                        "overwrite"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/import/preview": {
+      "post": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Create preview",
+        "description": "Module editor only; validate full manifest without persisting or granting health approval.",
+        "operationId": "previewServiceCenterImport",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "manifest"
+                ],
+                "properties": {
+                  "manifest": {
+                    "$ref": "#/components/schemas/ServiceCenterManifest"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/manifest": {
+      "get": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Get manifest",
+        "description": "Readers export enabled services only; editor grants, favorites and runtime health are excluded.",
+        "operationId": "exportServiceCenterManifest",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manifest v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceCenterManifest"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/services": {
+      "put": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Update services",
+        "description": "Module editor only; upsert a service against the expected catalog revision.",
+        "operationId": "saveServiceCenterService",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "service"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "service": {
+                    "$ref": "#/components/schemas/ServiceCenterService"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/services/{id}": {
+      "delete": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Delete :id",
+        "description": "Module editor only; delete by stable service ID and expected revision.",
+        "operationId": "deleteServiceCenterService",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/studio/session-categories": {
       "get": {
         "tags": [
@@ -25225,6 +25907,207 @@
       }
     },
     "schemas": {
+      "ServiceCenterManifest": {
+        "title": "Studio Service Center manifest v1",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "services"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "services": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "description",
+                "url",
+                "icon",
+                "category",
+                "tags",
+                "network",
+                "enabled",
+                "sortOrder"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                  "maxLength": 80
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "HTTP(S) navigation URL without userinfo or credential-like query parameters"
+                },
+                "icon": {
+                  "type": "string",
+                  "enum": [
+                    "globe",
+                    "server",
+                    "cloud",
+                    "tool",
+                    "database",
+                    "monitor",
+                    "folder",
+                    "shield"
+                  ]
+                },
+                "category": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "tags": {
+                  "type": "array",
+                  "maxItems": 12,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "network": {
+                  "type": "string",
+                  "enum": [
+                    "tailscale",
+                    "lan",
+                    "public",
+                    "local"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "sortOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "healthUrl": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "Explicitly approved server-side GET target only; import does not approve it"
+                },
+                "healthCheckEnabled": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ServiceCenterService": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "description",
+          "url",
+          "icon",
+          "category",
+          "tags",
+          "network",
+          "enabled",
+          "sortOrder"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 80
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "HTTP(S) navigation URL without userinfo or credential-like query parameters"
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "globe",
+              "server",
+              "cloud",
+              "tool",
+              "database",
+              "monitor",
+              "folder",
+              "shield"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 12,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "tailscale",
+              "lan",
+              "public",
+              "local"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "healthUrl": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Explicitly approved server-side GET target only; import does not approve it"
+          },
+          "healthCheckEnabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "SessionShare": {
         "type": "object",
         "additionalProperties": false,

@@ -101,6 +101,7 @@ const tagMappings = {
   'modules/studio/routes/announcements.ts': { name: 'Announcements', description: 'Published Studio desktop announcements, newest first' },
   'modules/studio/routes/api-docs.ts': { name: 'API Docs', description: 'OpenAPI route catalog' },
   'modules/studio/routes/agent-status.ts': { name: 'Agent Status', description: 'In-memory Agent installation, version, and source status' },
+  'modules/studio/routes/service-center.ts': { name: 'Service Center', description: 'Studio service directory, personal favorites, health and local editor grants' },
   'modules/coding-agents/routes/agents.ts': { name: 'Coding Agents', description: 'Coding agent installation, config, and runs' },
 }
 
@@ -889,6 +890,65 @@ openapi.components.responses = {
 // Run scanner
 console.log('Scanning routes...')
 openapi.paths = scanRoutes()
+
+// The tracked JSON Schema is the Service Center wire contract; OpenAPI 3.0
+// cannot express `const`, so translate that one keyword to its equivalent enum.
+const manifestSchema = JSON.parse(readFileSync(join(serverSourceDir, 'modules/studio/contracts/service-center/manifest.schema.json'), 'utf-8'))
+const { $schema: _schemaDialect, $id: _schemaId, ...manifestForOpenApi } = manifestSchema
+manifestForOpenApi.properties.schemaVersion = { type: 'integer', enum: [1] }
+openapi.components.schemas.ServiceCenterManifest = manifestForOpenApi
+openapi.components.schemas.ServiceCenterService = manifestForOpenApi.properties.services.items
+const ref = name => ({ $ref: `#/components/schemas/${name}` })
+const scBody = schema => ({ required: true, content: { 'application/json': { schema } } })
+const scResponse = (description, schema) => ({ description, content: { 'application/json': { schema } } })
+const scFields = { revision: { type: 'integer', minimum: 0 }, expectedRevision: { type: 'integer', minimum: 0 } }
+const scCapabilities = { type: 'object', additionalProperties: false, required: ['canManageServices', 'canManageEditors'],
+  properties: { canManageServices: { type: 'boolean' }, canManageEditors: { type: 'boolean' } } }
+const scHealth = { type: 'object', required: ['state', 'checkedAt', 'latencyMs', 'status'], properties: {
+  state: { type: 'string', enum: ['untested', 'stale', 'unapproved', 'disabled', 'healthy', 'http_error', 'redirected', 'timeout', 'unreachable', 'blocked', 'busy'] },
+  checkedAt: { type: 'string', format: 'date-time', nullable: true }, latencyMs: { type: 'integer', nullable: true }, status: { type: 'integer', nullable: true },
+} }
+const scPaths = {
+  '/catalog': { get: ['listServiceCenterCatalog', 'Active authenticated user; readers see only enabled services and their own favorites.', null,
+    scResponse('Catalog snapshot and server-owned module capabilities', { type: 'object', required: ['revision', 'services', 'favorites', 'health', 'capabilities'], properties: {
+      revision: scFields.revision, services: { type: 'array', items: ref('ServiceCenterService') }, favorites: { type: 'array', items: { type: 'string' } },
+      health: { type: 'object', additionalProperties: scHealth }, capabilities: scCapabilities,
+    } })] },
+  '/manifest': { get: ['exportServiceCenterManifest', 'Readers export enabled services only; editor grants, favorites and runtime health are excluded.', null, scResponse('Manifest v1', ref('ServiceCenterManifest'))] },
+  '/services': { put: ['saveServiceCenterService', 'Module editor only; upsert a service against the expected catalog revision.',
+    scBody({ type: 'object', additionalProperties: false, required: ['expectedRevision', 'service'], properties: { expectedRevision: scFields.expectedRevision, service: ref('ServiceCenterService') } })] },
+  '/services/{id}': { delete: ['deleteServiceCenterService', 'Module editor only; delete by stable service ID and expected revision.',
+    scBody({ type: 'object', additionalProperties: false, required: ['expectedRevision'], properties: { expectedRevision: scFields.expectedRevision } })] },
+  '/import/preview': { post: ['previewServiceCenterImport', 'Module editor only; validate full manifest without persisting or granting health approval.',
+    scBody({ type: 'object', additionalProperties: false, required: ['manifest'], properties: { manifest: ref('ServiceCenterManifest') } })] },
+  '/import/confirm': { post: ['confirmServiceCenterImport', 'Module editor only; merge/upsert. Every conflict requires keep or overwrite. Never deletes unmentioned services.',
+    scBody({ type: 'object', additionalProperties: false, required: ['expectedRevision', 'manifest', 'conflicts'], properties: {
+      expectedRevision: scFields.expectedRevision, manifest: ref('ServiceCenterManifest'), conflicts: { type: 'object', additionalProperties: { type: 'string', enum: ['keep', 'overwrite'] } },
+    } })] },
+  '/favorites/{id}': { put: ['setServiceCenterFavorite', 'Active authenticated user; ID must name an enabled service and favorite belongs only to the caller.',
+    scBody({ type: 'object', additionalProperties: false, required: ['favorite'], properties: { favorite: { type: 'boolean' } } })] },
+  '/health/{id}': { post: ['checkServiceCenterHealth', 'ID-only approved bounded server-side GET; does not prove the browser can open the service.', null, scResponse('Backend probe or explicit unapproved/disabled state', scHealth)] },
+  '/health/{id}/approval': { put: ['approveServiceCenterHealth', 'Module editor only; explicit approval pinned to the registered health URL.',
+    scBody({ type: 'object', additionalProperties: false, required: ['approved'], properties: { approved: { type: 'boolean' } } })] },
+  '/editors': { get: ['listServiceCenterEditors', 'Super administrator only; editor grants are separate from the public manifest.'] },
+  '/editors/{id}': { put: ['changeServiceCenterEditor', 'Super administrator only; target must be an active admin; audit grant and revoke.',
+    scBody({ type: 'object', additionalProperties: false, required: ['granted'], properties: { granted: { type: 'boolean' } } })] },
+}
+for (const [suffix, methods] of Object.entries(scPaths)) {
+  const path = `/api/studio/service-center${suffix}`
+  if (!openapi.paths[path]) throw new Error(`Service Center route missing from generated OpenAPI: ${path}`)
+  for (const [method, [operationId, description, requestBody, response]] of Object.entries(methods)) {
+    const operation = openapi.paths[path][method]
+    if (!operation) throw new Error(`Service Center method missing: ${method} ${path}`)
+    operation.operationId = operationId
+    operation.description = description
+    if (requestBody) operation.requestBody = requestBody
+    else delete operation.requestBody
+    if (response) operation.responses['200'] = response
+    operation.responses['403'] = { description: 'Module permission or active account required' }
+    if (['put', 'post', 'delete'].includes(method) && !suffix.startsWith('/favorites') && !suffix.startsWith('/health')) operation.responses['409'] = { description: 'Expected catalog revision mismatch or health target changed' }
+  }
+}
 
 // Collect all tags
 const tagSet = new Set()

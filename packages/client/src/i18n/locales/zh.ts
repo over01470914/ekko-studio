@@ -1,6 +1,8 @@
 import { socialMessagesZh } from '../social-messages'
+import { serviceCenterMessages } from '../service-center'
 
 export default {
+  serviceCenter: serviceCenterMessages.zh,
   jev: {
     browserAutomation: "内置浏览器自动化",
     browserAutomationHint: "可选判断复用当前 Profile 保存的 JEV 连接，下次判断生效。页面可见标签会发送给 JEV，不包含输入框的值。关闭、服务不可用或判断不确定时保留原有流程。",
