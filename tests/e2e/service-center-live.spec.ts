@@ -51,6 +51,17 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
       })
       expect(invalid.status, `${field} query key ${key}`).toBe(400)
     }
+    for (const fragment of [
+      '#access_token=fixture', '#refresh_token=fixture', '#id_token=fixture',
+      '#sessionid=fixture', '#password=fixture', '#secret=fixture', '#bearer=fixture',
+      '#/dashboard?access_token=fixture', '#%61ccess_token%3Dfixture',
+      '#access_token%253Dfixture', '#access_token:fixture',
+    ]) {
+      const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
+        service: { ...service, [field]: `https://example.org/${fragment}` }, expectedRevision: ownerCatalog.revision,
+      })
+      expect(invalid.status, `${field} fragment ${fragment}`).toBe(400)
+    }
   }
   expect((await (await request(base, 'sc-preview-owner', '/catalog')).json()).revision).toBe(ownerCatalog.revision)
   const added = await request(base, 'sc-preview-owner', '/services', 'PUT', { service, expectedRevision: ownerCatalog.revision })

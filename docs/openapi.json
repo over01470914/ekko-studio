@@ -26111,7 +26111,7 @@
                 "url": {
                   "type": "string",
                   "maxLength": 2048,
-                  "description": "HTTP(S) navigation URL without userinfo; only allowlisted, non-credential query keys are accepted"
+                  "description": "HTTP(S) navigation URL without userinfo; only allowlisted query keys and plain anchor/hash-path fragments (no parameters or encoded separators)"
                 },
                 "icon": {
                   "type": "string",
@@ -26161,7 +26161,7 @@
                 "healthUrl": {
                   "type": "string",
                   "maxLength": 2048,
-                  "description": "Server-side GET target with the same allowlisted query keys; import does not approve it"
+                  "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it"
                 },
                 "healthCheckEnabled": {
                   "type": "boolean"
@@ -26204,7 +26204,7 @@
           "url": {
             "type": "string",
             "maxLength": 2048,
-            "description": "HTTP(S) navigation URL without userinfo; only allowlisted, non-credential query keys are accepted"
+            "description": "HTTP(S) navigation URL without userinfo; only allowlisted query keys and plain anchor/hash-path fragments (no parameters or encoded separators)"
           },
           "icon": {
             "type": "string",
@@ -26254,7 +26254,7 @@
           "healthUrl": {
             "type": "string",
             "maxLength": 2048,
-            "description": "Server-side GET target with the same allowlisted query keys; import does not approve it"
+            "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it"
           },
           "healthCheckEnabled": {
             "type": "boolean"

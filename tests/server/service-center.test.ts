@@ -98,6 +98,18 @@ describe('Studio Service Center v1', () => {
         'X-Goog-Credential', 'ssoTicket', 'sig%256Eature',
         'unrecognized', 'view2', 'view%5Btoken%5D',
       ].map(key => `https://example.org/?${key}=fixture`),
+      // Fragments are retained in catalog/export even when health GET omits them.
+      'https://example.org/#access_token=fixture',
+      'https://example.org/#refresh_token=fixture',
+      'https://example.org/#id_token=fixture',
+      'https://example.org/#sessionid=fixture',
+      'https://example.org/#password=fixture',
+      'https://example.org/#secret=fixture',
+      'https://example.org/#bearer=fixture',
+      'https://example.org/#/dashboard?access_token=fixture',
+      'https://example.org/#%61ccess_token%3Dfixture',
+      'https://example.org/#access_token%253Dfixture',
+      'https://example.org/#access_token:fixture',
       'file:///etc/hosts', 'https://example.org/\n',
     ]) {
       expect(() => manifest.validateService({ ...specimen(), url: bad }), `navigation URL ${bad}`).toThrow()
@@ -108,6 +120,10 @@ describe('Studio Service Center v1', () => {
     const benign = `https://example.org/?${benignKeys.map(key => `${key}=fixture`).join('&')}`
     expect(manifest.validateNavigationUrl(benign)).toBe(true)
     expect(() => manifest.validateService({ ...specimen(), url: benign, healthUrl: benign })).not.toThrow()
+    for (const anchor of ['#overview', '#/dashboard', '#/tools/status']) {
+      expect(() => manifest.validateService({ ...specimen(), url: `https://example.org/${anchor}`,
+        healthUrl: `https://example.org/${anchor}` })).not.toThrow()
+    }
     expect(manifest.validateNavigationUrl('https://example.org/?view=dashboard&sessionid=fixture')).toBe(false)
     expect(() => manifest.validateManifest({ schemaVersion: 2, services: [] })).toThrow()
     expect(() => manifest.validateManifest({ schemaVersion: 1, services: [specimen(), specimen()] })).toThrow()

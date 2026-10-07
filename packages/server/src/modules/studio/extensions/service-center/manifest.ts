@@ -48,12 +48,20 @@ function permittedQueryKey(key: string): boolean {
   return /^[a-z]+$/i.test(key) && benignQueryKeys.has(key.toLowerCase())
 }
 
+function permittedFragment(hash: string): boolean {
+  // Hash fragments are persisted/exported and sent to the browser even though
+  // health GET omits them. Keep plain anchors/hash paths, never parameters or
+  // encoded separators that a destination could decode as credential pairs.
+  return !hash || /^#\/?[a-z0-9_-]+(?:\/[a-z0-9_-]+)*\/?$/i.test(hash)
+}
+
 export function validateNavigationUrl(value: unknown): value is string {
   if (!string(value, 2048, true) || /[\\`\s]/.test(value)) return false
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return false
     if (url.href !== value && url.href !== `${value}/`) return false
+    if (!permittedFragment(url.hash)) return false
     for (const key of url.searchParams.keys()) {
       if (!permittedQueryKey(key)) return false
     }

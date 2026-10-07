@@ -16,14 +16,14 @@
           "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 80 },
           "name": { "type": "string", "minLength": 1, "maxLength": 100 },
           "description": { "type": "string", "maxLength": 500 },
-          "url": { "type": "string", "maxLength": 2048, "description": "HTTP(S) navigation URL without userinfo; only allowlisted, non-credential query keys are accepted" },
+          "url": { "type": "string", "maxLength": 2048, "description": "HTTP(S) navigation URL without userinfo; only allowlisted query keys and plain anchor/hash-path fragments (no parameters or encoded separators)" },
           "icon": { "type": "string", "enum": ["globe", "server", "cloud", "tool", "database", "monitor", "folder", "shield"] },
           "category": { "type": "string", "minLength": 1, "maxLength": 80 },
           "tags": { "type": "array", "maxItems": 12, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 40 } },
           "network": { "type": "string", "enum": ["tailscale", "lan", "public", "local"] },
           "enabled": { "type": "boolean" },
           "sortOrder": { "type": "integer", "minimum": 0, "maximum": 1000000 },
-          "healthUrl": { "type": "string", "maxLength": 2048, "description": "Server-side GET target with the same allowlisted query keys; import does not approve it" },
+          "healthUrl": { "type": "string", "maxLength": 2048, "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it" },
           "healthCheckEnabled": { "type": "boolean" }
         }
       }
