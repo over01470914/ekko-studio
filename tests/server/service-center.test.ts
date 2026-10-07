@@ -88,13 +88,27 @@ describe('Studio Service Center v1', () => {
       'https://example.org/?oauthVerifier2=x',
       'https://example.org/?clientAssertion=x', 'https://example.org/?client_assertion=x',
       'https://example.org/?clientAssertion2=x',
+      // Credential schemes use both glued-together names and short vendor-specific keys.
+      ...[
+        'idtoken', 'xapikey', 'credentials', 'cred', 'authz', 'hdnts',
+        'sessionid', 'sid', 'sas', 'sp', 'sv', 'se', 'st', 'ticket',
+        'sso', 'ssoid', 'hmac', 'xmlsig', 'keyhash', 'certificate',
+        'pkce', 'saml', 'pass', 'shadow', 'dkim', 'authheader', 'keyid',
+        'idToken2', 'x-api-key', 'session_id', 'X-Amz-Credential',
+        'X-Goog-Credential', 'ssoTicket', 'sig%256Eature',
+        'unrecognized', 'view2', 'view%5Btoken%5D',
+      ].map(key => `https://example.org/?${key}=fixture`),
       'file:///etc/hosts', 'https://example.org/\n',
     ]) {
       expect(() => manifest.validateService({ ...specimen(), url: bad }), `navigation URL ${bad}`).toThrow()
       expect(() => manifest.validateService({ ...specimen(), healthUrl: bad }), `health URL ${bad}`).toThrow()
     }
-    expect(manifest.validateNavigationUrl('https://example.org/?view=dashboard&category=tools')).toBe(true)
-    expect(() => manifest.validateService({ ...specimen(), healthUrl: 'https://example.org/?view=dashboard&category=tools' })).not.toThrow()
+    const benignKeys = ['view', 'category', 'tag', 'q', 'page', 'sort', 'lang',
+      'id', 'name', 'filter', 'tab', 'ref', 'highlight']
+    const benign = `https://example.org/?${benignKeys.map(key => `${key}=fixture`).join('&')}`
+    expect(manifest.validateNavigationUrl(benign)).toBe(true)
+    expect(() => manifest.validateService({ ...specimen(), url: benign, healthUrl: benign })).not.toThrow()
+    expect(manifest.validateNavigationUrl('https://example.org/?view=dashboard&sessionid=fixture')).toBe(false)
     expect(() => manifest.validateManifest({ schemaVersion: 2, services: [] })).toThrow()
     expect(() => manifest.validateManifest({ schemaVersion: 1, services: [specimen(), specimen()] })).toThrow()
     expect(() => manifest.validateService({ ...specimen(), enabled: true, permission: 'editor' })).toThrow()

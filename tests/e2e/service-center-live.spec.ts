@@ -11,8 +11,9 @@ test.skip(!tokenFile, 'Run only with the isolated Service Center preview harness
 const tokens = tokenFile ? JSON.parse(readFileSync(tokenFile, 'utf8')) as Record<string, string> : {}
 const screenshotDir = process.env.SERVICE_CENTER_SCREENSHOT_DIR
 const id = `live-${randomUUID().slice(0, 8)}`
+const benignQuery = 'view=dashboard&category=tools&tag=sample&q=test&page=2&sort=name&lang=en&id=fixture&name=display&filter=enabled&tab=home&ref=docs&highlight=item'
 const service = { id, name: 'Live test service', category: 'Development', description: 'Preview acceptance',
-  tags: ['live'], url: 'https://example.org/', healthUrl: 'https://example.org/?view=dashboard&category=tools',
+  tags: ['live'], url: `https://example.org/?${benignQuery}`, healthUrl: `https://example.org/?${benignQuery}`,
   icon: 'globe', network: 'public', enabled: true, sortOrder: 0 }
 
 const request = (baseURL: string, role: string, path: string, method = 'GET', body?: unknown) =>
@@ -38,6 +39,12 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
       'oauthState', 'oauth_state', 'oauth-state-2', 'oauthstate2',
       'oauthVerifier', 'oauth_verifier', 'oauthVerifier2',
       'clientAssertion', 'client_assertion', 'clientAssertion2',
+      'idtoken', 'xapikey', 'credentials', 'cred', 'authz', 'hdnts',
+      'sessionid', 'sid', 'sas', 'sp', 'sv', 'se', 'st', 'ticket',
+      'sso', 'ssoid', 'hmac', 'xmlsig', 'keyhash', 'certificate',
+      'pkce', 'saml', 'pass', 'shadow', 'dkim', 'authheader', 'keyid',
+      'idToken2', 'x-api-key', 'session_id', 'X-Amz-Credential',
+      'X-Goog-Credential', 'ssoTicket', 'sig%256Eature',
     ]) {
       const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
         service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
@@ -50,8 +57,10 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   expect(added.status).toBe(200)
   const created = await added.json()
   expect(created.services.some((entry: { id: string }) => entry.id === id)).toBe(true)
+  expect(created.services.find((entry: { id: string, url: string }) => entry.id === id)?.url)
+    .toBe(`https://example.org/?${benignQuery}`)
   expect(created.services.find((entry: { id: string }) => entry.id === id)?.healthUrl)
-    .toBe('https://example.org/?view=dashboard&category=tools')
+    .toBe(`https://example.org/?${benignQuery}`)
   expect((await request(base, 'sc-preview-owner', '/services', 'PUT', { service: { ...service, id: `${id}-stale` }, expectedRevision: ownerCatalog.revision })).status).toBe(409)
   const visibleToReader = await (await request(base, 'sc-preview-reader', '/catalog')).json()
   expect(visibleToReader.services.some((entry: { id: string }) => entry.id === id)).toBe(true)

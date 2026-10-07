@@ -33,21 +33,19 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const string = (value: unknown, max: number, requiredValue = false): value is string =>
   typeof value === 'string' && value === value.trim() && value.length <= max &&
   (!requiredValue || value.length > 0) && !/[\u0000-\u001f\u007f<>]/.test(value)
-const secretKey = /(?:^|_)(?:token|key|secret|password|passphrase|passwd|pwd|credential|auth|authorization|session|cookie|jwt|bearer|signature|sig|code|otp|totp|passcode|pin|verifier|assertion)(?:\d+)?(?:$|_)/
+// Query-key deny lists cannot cover vendor-specific signed URLs or new
+// credential aliases. Allow only ordinary navigation/filter keys and fail
+// closed on everything else, including nested or still-encoded key names.
+const benignQueryKeys = new Set([
+  'view', 'category', 'tag', 'q', 'page', 'sort', 'lang', 'id',
+  'name', 'filter', 'tab', 'ref', 'highlight',
+])
 
-function credentialQueryKey(key: string): boolean {
-  // URLSearchParams decodes the key, but separators and camelCase must both be
-  // treated as word boundaries (accessToken, clientSecret, APIKey, etc.).
-  // Refuse another layer of %-encoding rather than guessing how the destination
-  // decodes a credential key such as %2563ode.
-  if (/%[0-9a-f]{2}/i.test(key)) return true
-  const normalized = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
-    .replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()
-  return secretKey.test(normalized) ||
-    /(?:^|_)pass_?phrase(?:_?\d+)?(?:$|_)/.test(normalized) ||
-    /(?:^|_)oauth_?state\d*(?:$|_)/.test(normalized) ||
-    /^(?:access|refresh|client|api|private|oauth|verification|onetime|recovery|login|mfa|auth)(?:token|secret|key|password|passphrase|credential|code|otp|totp|verifier|assertion|state)\d*$/.test(normalized)
+function permittedQueryKey(key: string): boolean {
+  // URLSearchParams has decoded the key once. A second %-decoding, separators,
+  // Unicode aliases or numeric suffixes must not turn an unknown key into one
+  // we accept; case-insensitive ASCII spelling is the only normalization.
+  return /^[a-z]+$/i.test(key) && benignQueryKeys.has(key.toLowerCase())
 }
 
 export function validateNavigationUrl(value: unknown): value is string {
@@ -57,7 +55,7 @@ export function validateNavigationUrl(value: unknown): value is string {
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return false
     if (url.href !== value && url.href !== `${value}/`) return false
     for (const key of url.searchParams.keys()) {
-      if (credentialQueryKey(key)) return false
+      if (!permittedQueryKey(key)) return false
     }
     return true
   } catch { return false }
