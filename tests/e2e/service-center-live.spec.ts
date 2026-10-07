@@ -27,15 +27,17 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   const readerDenied = await request(base, 'sc-preview-reader', '/services', 'PUT', { service, expectedRevision: 0 })
   expect(readerDenied.status).toBe(403)
   const ownerCatalog = await (await request(base, 'sc-preview-owner', '/catalog')).json()
-  for (const [field, key] of [
-    ['url', 'accessToken'], ['healthUrl', 'clientSecret'],
-    ['url', 'bearer'], ['url', 'sig'], ['url', 'X-Amz-Signature'],
-    ['healthUrl', 'signature'], ['healthUrl', 'X-Goog-Signature'],
-  ] as const) {
-    const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
-      service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
-    })
-    expect(invalid.status).toBe(400)
+  for (const field of ['url', 'healthUrl'] as const) {
+    for (const key of [
+      'accessToken', 'clientSecret', 'bearer', 'sig', 'X-Amz-Signature',
+      'signature', 'X-Goog-Signature', 'accessCode', 'oauth_code',
+      'verification_code', 'one_time_code', 'otp', 'password2', 'secret2', 'code',
+    ]) {
+      const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
+        service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
+      })
+      expect(invalid.status, `${field} query key ${key}`).toBe(400)
+    }
   }
   expect((await (await request(base, 'sc-preview-owner', '/catalog')).json()).revision).toBe(ownerCatalog.revision)
   const added = await request(base, 'sc-preview-owner', '/services', 'PUT', { service, expectedRevision: ownerCatalog.revision })

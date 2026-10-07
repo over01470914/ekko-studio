@@ -71,6 +71,12 @@ describe('Studio Service Center v1', () => {
       'https://example.org/?sig=x', 'https://example.org/?requestSignature=x',
       'https://example.org/?X-Amz-Signature=x', 'https://example.org/?X-Goog-Signature=x',
       'https://example.org/?XAmzSignature=x',
+      'https://example.org/?accessCode=x', 'https://example.org/?oauth_code=x',
+      'https://example.org/?verification_code=x', 'https://example.org/?one_time_code=x',
+      'https://example.org/?otp=x', 'https://example.org/?password2=x',
+      'https://example.org/?secret2=x', 'https://example.org/?code=x',
+      'https://example.org/?accesscode=x', 'https://example.org/?code2=x',
+      'https://example.org/?%61ccess%43ode=x', 'https://example.org/?%2563ode=x',
       'file:///etc/hosts', 'https://example.org/\n',
     ]) {
       expect(() => manifest.validateService({ ...specimen(), url: bad })).toThrow()

@@ -33,16 +33,19 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const string = (value: unknown, max: number, requiredValue = false): value is string =>
   typeof value === 'string' && value === value.trim() && value.length <= max &&
   (!requiredValue || value.length > 0) && !/[\u0000-\u001f\u007f<>]/.test(value)
-const secretKey = /(?:^|[_-])(token|key|secret|password|passwd|pwd|credential|auth|authorization|session|cookie|jwt|api.?key|bearer|signature|sig)(?:$|[_-]|id$)/i
+const secretKey = /(?:^|_)(?:token|key|secret|password|passwd|pwd|credential|auth|authorization|session|cookie|jwt|bearer|signature|sig|code|otp|passcode|pin)(?:\d+)?(?:$|_)/
 
 function credentialQueryKey(key: string): boolean {
   // URLSearchParams decodes the key, but separators and camelCase must both be
   // treated as word boundaries (accessToken, clientSecret, APIKey, etc.).
+  // Refuse another layer of %-encoding rather than guessing how the destination
+  // decodes a credential key such as %2563ode.
+  if (/%[0-9a-f]{2}/i.test(key)) return true
   const normalized = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
     .replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()
   return secretKey.test(normalized) ||
-    /^(?:access|refresh|client|api|private)(?:token|secret|key|password|credential)$/.test(normalized)
+    /^(?:access|refresh|client|api|private|oauth|verification|onetime|recovery|login|mfa|auth)(?:token|secret|key|password|credential|code|otp)\d*$/.test(normalized)
 }
 
 export function validateNavigationUrl(value: unknown): value is string {
