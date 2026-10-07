@@ -27,7 +27,11 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   const readerDenied = await request(base, 'sc-preview-reader', '/services', 'PUT', { service, expectedRevision: 0 })
   expect(readerDenied.status).toBe(403)
   const ownerCatalog = await (await request(base, 'sc-preview-owner', '/catalog')).json()
-  for (const [field, key] of [['url', 'accessToken'], ['healthUrl', 'clientSecret']] as const) {
+  for (const [field, key] of [
+    ['url', 'accessToken'], ['healthUrl', 'clientSecret'],
+    ['url', 'bearer'], ['url', 'sig'], ['url', 'X-Amz-Signature'],
+    ['healthUrl', 'signature'], ['healthUrl', 'X-Goog-Signature'],
+  ] as const) {
     const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
       service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
     })

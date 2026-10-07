@@ -33,7 +33,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const string = (value: unknown, max: number, requiredValue = false): value is string =>
   typeof value === 'string' && value === value.trim() && value.length <= max &&
   (!requiredValue || value.length > 0) && !/[\u0000-\u001f\u007f<>]/.test(value)
-const secretKey = /(?:^|[_-])(token|key|secret|password|passwd|pwd|credential|auth|authorization|session|cookie|jwt|api.?key)(?:$|[_-]|id$)/i
+const secretKey = /(?:^|[_-])(token|key|secret|password|passwd|pwd|credential|auth|authorization|session|cookie|jwt|api.?key|bearer|signature|sig)(?:$|[_-]|id$)/i
 
 function credentialQueryKey(key: string): boolean {
   // URLSearchParams decodes the key, but separators and camelCase must both be
