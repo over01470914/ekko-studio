@@ -77,10 +77,21 @@ describe('Studio Service Center v1', () => {
       'https://example.org/?secret2=x', 'https://example.org/?code=x',
       'https://example.org/?accesscode=x', 'https://example.org/?code2=x',
       'https://example.org/?%61ccess%43ode=x', 'https://example.org/?%2563ode=x',
+      'https://example.org/?passphrase=x', 'https://example.org/?passphrase2=x',
+      'https://example.org/?passPhrase=x', 'https://example.org/?pass_phrase=x',
+      'https://example.org/?pass-phrase-2=x', 'https://example.org/?passPhrase2=x',
+      'https://example.org/?totp=x', 'https://example.org/?TOTP=x',
+      'https://example.org/?totp2=x',
+      'https://example.org/?oauthState=x', 'https://example.org/?oauth_state=x',
+      'https://example.org/?oauth-state-2=x', 'https://example.org/?oauthstate2=x',
+      'https://example.org/?oauthVerifier=x', 'https://example.org/?oauth_verifier=x',
+      'https://example.org/?oauthVerifier2=x',
+      'https://example.org/?clientAssertion=x', 'https://example.org/?client_assertion=x',
+      'https://example.org/?clientAssertion2=x',
       'file:///etc/hosts', 'https://example.org/\n',
     ]) {
-      expect(() => manifest.validateService({ ...specimen(), url: bad })).toThrow()
-      expect(() => manifest.validateService({ ...specimen(), healthUrl: bad })).toThrow()
+      expect(() => manifest.validateService({ ...specimen(), url: bad }), `navigation URL ${bad}`).toThrow()
+      expect(() => manifest.validateService({ ...specimen(), healthUrl: bad }), `health URL ${bad}`).toThrow()
     }
     expect(manifest.validateNavigationUrl('https://example.org/?view=dashboard&category=tools')).toBe(true)
     expect(() => manifest.validateService({ ...specimen(), healthUrl: 'https://example.org/?view=dashboard&category=tools' })).not.toThrow()

@@ -12,7 +12,8 @@ const tokens = tokenFile ? JSON.parse(readFileSync(tokenFile, 'utf8')) as Record
 const screenshotDir = process.env.SERVICE_CENTER_SCREENSHOT_DIR
 const id = `live-${randomUUID().slice(0, 8)}`
 const service = { id, name: 'Live test service', category: 'Development', description: 'Preview acceptance',
-  tags: ['live'], url: 'https://example.org/', icon: 'globe', network: 'public', enabled: true, sortOrder: 0 }
+  tags: ['live'], url: 'https://example.org/', healthUrl: 'https://example.org/?view=dashboard&category=tools',
+  icon: 'globe', network: 'public', enabled: true, sortOrder: 0 }
 
 const request = (baseURL: string, role: string, path: string, method = 'GET', body?: unknown) =>
   fetch(`${baseURL}/api/studio/service-center${path}`, { method, headers: {
@@ -32,6 +33,11 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
       'accessToken', 'clientSecret', 'bearer', 'sig', 'X-Amz-Signature',
       'signature', 'X-Goog-Signature', 'accessCode', 'oauth_code',
       'verification_code', 'one_time_code', 'otp', 'password2', 'secret2', 'code',
+      'passphrase', 'passphrase2', 'passPhrase', 'pass_phrase', 'pass-phrase-2', 'passPhrase2',
+      'totp', 'TOTP', 'totp2',
+      'oauthState', 'oauth_state', 'oauth-state-2', 'oauthstate2',
+      'oauthVerifier', 'oauth_verifier', 'oauthVerifier2',
+      'clientAssertion', 'client_assertion', 'clientAssertion2',
     ]) {
       const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
         service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
@@ -44,6 +50,8 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   expect(added.status).toBe(200)
   const created = await added.json()
   expect(created.services.some((entry: { id: string }) => entry.id === id)).toBe(true)
+  expect(created.services.find((entry: { id: string }) => entry.id === id)?.healthUrl)
+    .toBe('https://example.org/?view=dashboard&category=tools')
   expect((await request(base, 'sc-preview-owner', '/services', 'PUT', { service: { ...service, id: `${id}-stale` }, expectedRevision: ownerCatalog.revision })).status).toBe(409)
   const visibleToReader = await (await request(base, 'sc-preview-reader', '/catalog')).json()
   expect(visibleToReader.services.some((entry: { id: string }) => entry.id === id)).toBe(true)
@@ -88,7 +96,11 @@ test('actual UI renders editor and reader roles at desktop and mobile sizes', as
   const editor = page.getByRole('dialog')
   await expect(editor.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Live test service updated')
   await expect.poll(() => editor.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
-  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-editor.png'), fullPage: false, animations: 'disabled' })
+  if (screenshotDir) {
+    await page.setViewportSize({ width: 1280, height: 1024 })
+    await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+    await page.screenshot({ path: resolve(screenshotDir, 'service-center-editor.png'), fullPage: false, animations: 'disabled' })
+  }
   await editor.getByRole('textbox', { name: 'Name', exact: true }).fill('Live test service from UI')
   await editor.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(card.getByRole('link', { name: 'Live test service from UI' })).toBeVisible()
