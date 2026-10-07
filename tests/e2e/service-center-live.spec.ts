@@ -27,6 +27,13 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   const readerDenied = await request(base, 'sc-preview-reader', '/services', 'PUT', { service, expectedRevision: 0 })
   expect(readerDenied.status).toBe(403)
   const ownerCatalog = await (await request(base, 'sc-preview-owner', '/catalog')).json()
+  for (const [field, key] of [['url', 'accessToken'], ['healthUrl', 'clientSecret']] as const) {
+    const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
+      service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
+    })
+    expect(invalid.status).toBe(400)
+  }
+  expect((await (await request(base, 'sc-preview-owner', '/catalog')).json()).revision).toBe(ownerCatalog.revision)
   const added = await request(base, 'sc-preview-owner', '/services', 'PUT', { service, expectedRevision: ownerCatalog.revision })
   expect(added.status).toBe(200)
   const created = await added.json()
@@ -54,21 +61,28 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
 })
 
 test('actual UI renders editor and reader roles at desktop and mobile sizes', async ({ page, browser, baseURL }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
   await authenticate(page, tokens['sc-preview-editor'])
   await page.goto('/#/service-center')
   await expect(page.getByRole('heading', { name: 'Service Center' })).toBeVisible()
+  const rail = page.locator('.app-shell > .studio-navigation-rail')
+  await expect(rail).toBeVisible()
+  const serviceCenterEntry = rail.getByRole('link', { name: 'Service Center', exact: true })
+  await expect(serviceCenterEntry).toBeVisible()
+  await expect(serviceCenterEntry).toHaveAttribute('aria-current', 'page')
+  expect(await rail.boundingBox()).toMatchObject({ x: 0, width: 64 })
   const card = page.locator(`[data-service-id="${id}"]`)
   await expect(card.getByRole('link', { name: 'Live test service updated' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add service' })).toBeVisible()
   if (screenshotDir) {
     mkdirSync(screenshotDir, { recursive: true, mode: 0o700 })
-    await page.screenshot({ path: resolve(screenshotDir, 'service-center-desktop.png'), fullPage: true })
+    await page.screenshot({ path: resolve(screenshotDir, 'service-center-desktop.png'), fullPage: false, animations: 'disabled' })
   }
   await card.getByRole('button', { name: 'Edit' }).click()
   const editor = page.getByRole('dialog')
   await expect(editor.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Live test service updated')
   await expect.poll(() => editor.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
-  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-editor.png'), fullPage: true })
+  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-editor.png'), fullPage: false, animations: 'disabled' })
   await editor.getByRole('textbox', { name: 'Name', exact: true }).fill('Live test service from UI')
   await editor.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(card.getByRole('link', { name: 'Live test service from UI' })).toBeVisible()

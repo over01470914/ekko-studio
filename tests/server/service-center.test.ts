@@ -61,9 +61,11 @@ describe('Studio Service Center v1', () => {
 
   it('validates the tracked manifest rules, rejects credential URLs and imports atomically', async () => {
     expect(manifest.validateManifest({ schemaVersion: 1, services: [specimen()] }).services).toHaveLength(1)
-    for (const bad of ['javascript:alert(1)', 'https://name:pass@example.org/', 'https://example.org/?access_token=abc', 'https://example.org/?api-key=x', 'https://example.org/?session_id=abc', 'https://example.org/?jwt=x', 'file:///etc/hosts', 'https://example.org/\n']) {
+    for (const bad of ['javascript:alert(1)', 'https://name:pass@example.org/', 'https://example.org/?access_token=abc', 'https://example.org/?accessToken=abc', 'https://example.org/?clientSecret=abc', 'https://example.org/?APIKey=x', 'https://example.org/?api-key=x', 'https://example.org/?session_id=abc', 'https://example.org/?refreshToken=x', 'https://example.org/?jwt=x', 'file:///etc/hosts', 'https://example.org/\n']) {
       expect(() => manifest.validateService({ ...specimen(), url: bad })).toThrow()
+      expect(() => manifest.validateService({ ...specimen(), healthUrl: bad })).toThrow()
     }
+    expect(manifest.validateNavigationUrl('https://example.org/?view=dashboard&category=tools')).toBe(true)
     expect(() => manifest.validateManifest({ schemaVersion: 2, services: [] })).toThrow()
     expect(() => manifest.validateManifest({ schemaVersion: 1, services: [specimen(), specimen()] })).toThrow()
     expect(() => manifest.validateService({ ...specimen(), enabled: true, permission: 'editor' })).toThrow()

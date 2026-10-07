@@ -35,6 +35,16 @@ const string = (value: unknown, max: number, requiredValue = false): value is st
   (!requiredValue || value.length > 0) && !/[\u0000-\u001f\u007f<>]/.test(value)
 const secretKey = /(?:^|[_-])(token|key|secret|password|passwd|pwd|credential|auth|authorization|session|cookie|jwt|api.?key)(?:$|[_-]|id$)/i
 
+function credentialQueryKey(key: string): boolean {
+  // URLSearchParams decodes the key, but separators and camelCase must both be
+  // treated as word boundaries (accessToken, clientSecret, APIKey, etc.).
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()
+  return secretKey.test(normalized) ||
+    /^(?:access|refresh|client|api|private)(?:token|secret|key|password|credential)$/.test(normalized)
+}
+
 export function validateNavigationUrl(value: unknown): value is string {
   if (!string(value, 2048, true) || /[\\`\s]/.test(value)) return false
   try {
@@ -42,7 +52,7 @@ export function validateNavigationUrl(value: unknown): value is string {
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return false
     if (url.href !== value && url.href !== `${value}/`) return false
     for (const key of url.searchParams.keys()) {
-      if (secretKey.test(key) || /^(access_token|apikey|client_secret|authorization)$/i.test(key)) return false
+      if (credentialQueryKey(key)) return false
     }
     return true
   } catch { return false }
