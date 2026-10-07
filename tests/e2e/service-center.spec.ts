@@ -11,6 +11,10 @@ async function directory(page: Page, editor: boolean) {
   let editorIds: number[] = []
   let failNextSave = false
   const requests: Array<{ method: string; path: string; body: any }> = []
+  await page.route('**/api/studio/extensions', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    contractVersion: 1, extensions: [{ id: 'service-center', version: '1.1.0', apiBase: '/api/studio/service-center',
+      capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants'] }],
+  }) }))
   await page.route('**/api/studio/service-center/**', async route => {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace('/api/studio/service-center', '')
@@ -44,6 +48,25 @@ async function directory(page: Page, editor: boolean) {
   await page.route('https://example.org/tool', route => route.fulfill({ status: 200, body: 'destination opened' }))
   return { requests, services: () => services, setServices: (next: Service[]) => { services = next; revision++ }, failSave: () => { failNextSave = true } }
 }
+
+test('a disabled server module has no client route or navigation, while normal Studio routes still work', async ({ page }) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await mockHermesApi(page)
+  await page.route('**/api/studio/extensions', route => route.fulfill({ contentType: 'application/json',
+    body: JSON.stringify({ contractVersion: 1, extensions: [] }) }))
+  await page.goto('/#/hermes/chat')
+  await expect(page.locator('a[href="#/service-center"]')).toHaveCount(0)
+  await expect(page.locator('a[href="#/hermes/connections"]')).toHaveCount(1)
+})
+
+test('failed discovery installs no extension UI and leaves Studio routes available', async ({ page }) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await mockHermesApi(page)
+  await page.route('**/api/studio/extensions', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' }))
+  await page.goto('/#/hermes/chat')
+  await expect(page.locator('a[href="#/service-center"]')).toHaveCount(0)
+  await expect(page.locator('a[href="#/hermes/connections"]')).toHaveCount(1)
+})
 
 test('sidebar, directory, search, categories, favorites and exact safe new tab for a reader', async ({ page, context }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')

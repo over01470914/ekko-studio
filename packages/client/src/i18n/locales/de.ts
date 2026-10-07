@@ -1,8 +1,6 @@
 import { socialMessagesDe } from '../social-messages-locales'
-import { serviceCenterMessages } from '../service-center'
 
 export default {
-  serviceCenter: serviceCenterMessages.de,
   jev: {
     browserAutomation: "Automatisierung des integrierten Browsers",
     browserAutomationHint: "Optionale Bewertungen verwenden die gespeicherte JEV-Verbindung dieses Profils ab der nächsten Bewertung. Sichtbare Beschriftungen werden an JEV gesendet, Eingabewerte nicht. Bei deaktivierter, nicht verfügbarer oder unsicherer Bewertung bleibt der bisherige Ablauf erhalten.",

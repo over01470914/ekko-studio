@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, provide, ref } from 'vue'
 import { NButton, NInput, NModal, NSelect, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { useServiceCenterStore } from '@/stores/studio/service-center'
-import * as api from '@/api/studio/service-center'
-import type { ImportPreview, Manifest, ServiceEntry } from '@/api/studio/service-center'
-import ServiceCard from '@/components/studio/service-center/ServiceCard.vue'
-import ServiceEditor from '@/components/studio/service-center/ServiceEditor.vue'
+import { useServiceCenterStore } from './store'
+import * as api from './api'
+import type { ImportPreview, Manifest, ServiceEntry } from './api'
+import ServiceCard from './ServiceCard.vue'
+import ServiceEditor from './ServiceEditor.vue'
+import { serviceCenterMessages } from './messages'
+import { serviceCenterTranslationKey } from './translation'
 
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'local', inheritLocale: true, fallbackLocale: 'en',
+  messages: Object.fromEntries(Object.entries(serviceCenterMessages).map(([locale, messages]) => [locale, { serviceCenter: messages }])) })
+provide(serviceCenterTranslationKey, (key, named) => named ? t(key, named) : t(key))
 const message = useMessage()
 const store = useServiceCenterStore()
 const search = ref('')
@@ -213,5 +217,5 @@ onMounted(() => { void store.refresh() })
 .service-center__import-preview { margin: 18px 0; }
 .service-center__conflict, .service-center__permission { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 0; border-bottom: 1px solid $border-color; }
 .service-center__conflict .n-select { max-width: 200px; }
-@media (max-width: 640px) { .service-center__filters { grid-template-columns: 1fr 1fr; } .service-center__filters .n-input { grid-column: 1 / -1; } .service-center__header { align-items: flex-start; } }
+@media (max-width: 640px) { .service-center { padding-top: 68px; } .service-center__filters { grid-template-columns: 1fr 1fr; } .service-center__filters .n-input { grid-column: 1 / -1; } .service-center__header { align-items: flex-start; } }
 </style>

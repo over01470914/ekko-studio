@@ -12,16 +12,17 @@ async function main() {
     throw new Error('Preview requires HERMES_WEB_UI_HOME inside the Hermes scratch directory')
   }
   if (process.env.AUTH_JWT_SECRET || process.env.AUTH_TOKEN) throw new Error('Preview must not inherit auth secrets')
+  if (process.env.STUDIO_SERVICE_CENTER_ENABLED !== '1') throw new Error('Preview requires the explicit Service Center feature flag')
   await mkdir(stateDir, { recursive: true, mode: 0o700 })
 
   // Import only after env isolation checks: config and SQLite resolve at import time.
-  const [{ default: Koa }, { default: Router }, { default: bodyParser }, schemas, users, auth, authController, serviceCenterRoutes] = await Promise.all([
+  const [{ default: Koa }, { default: Router }, { default: bodyParser }, schemas, users, auth, authController, { studioExtensions }] = await Promise.all([
     import('koa'), import('@koa/router'), import('@koa/bodyparser'),
     import('../../packages/server/src/modules/studio/infrastructure/database/schemas'),
     import('../../packages/server/src/modules/studio/repositories/users-store'),
     import('../../packages/server/src/modules/studio/middleware/auth'),
     import('../../packages/server/src/modules/studio/controllers/auth'),
-    import('../../packages/server/src/modules/studio/routes/service-center'),
+    import('../../packages/server/src/bootstrap/studio-extensions'),
   ])
   schemas.initAllHermesTables()
   const credentials = randomBytes(32).toString('hex')
@@ -48,7 +49,9 @@ async function main() {
   protectedRoutes.get('/api/auth/me', authController.currentUser)
   protectedRoutes.get('/api/auth/users', auth.requireSuperAdmin, authController.listManagedUsers)
   app.use(protectedRoutes.routes())
-  app.use(serviceCenterRoutes.serviceCenterRoutes.routes())
+  const extensions = studioExtensions()
+  app.use(extensions.discovery.routes())
+  extensions.routes.forEach(router => app.use(router.routes()))
   const port = Number(process.env.PORT || 18671)
   if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid preview port')
   const host = process.env.BIND_HOST || '127.0.0.1'

@@ -1,22 +1,17 @@
-import { chmod, mkdir, readFile } from 'fs/promises'
-import { join } from 'path'
-import { config } from '../../public/config'
-import { safeFileStore } from '../../public/safe-file-store'
-import { ServiceCenterError, validateManifest, validateService, type ServiceEntry, type ServiceManifest } from '../../contracts/service-center/manifest'
+import { readFile } from 'fs/promises'
 
-const root = join(config.appHome, 'service-center')
-const catalogPath = join(root, 'catalog.json')
-const grantPath = join(root, 'editors.json')
-const approvalPath = join(root, 'health-approvals.json')
-const favoritesPath = (id: number) => join(root, 'favorites', `${id}.json`)
+import { ServiceCenterError, validateManifest, validateService, type ServiceEntry, type ServiceManifest } from './manifest'
+import { dataPath, updateFiles } from './storage'
+
+const catalogPath = () => dataPath('catalog.json')
+const grantPath = () => dataPath('editors.json')
+const approvalPath = () => dataPath('health-approvals.json')
+const favoritesPath = (id: number) => dataPath('favorites', `${id}.json`)
 const emptyCatalog = (): Catalog => ({ revision: 0, schemaVersion: 1, services: [] })
 export interface Catalog extends ServiceManifest { revision: number }
 interface Grants { editorIds: number[]; audit: Array<{ actorId: number; targetId: number; action: 'grant' | 'revoke'; at: string }> }
 
-async function setup(): Promise<void> {
-  await mkdir(root, { recursive: true, mode: 0o700 })
-  await chmod(root, 0o700)
-}
+
 async function readJson(path: string): Promise<unknown> {
   try { return JSON.parse(await readFile(path, 'utf8')) }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
@@ -40,38 +35,33 @@ function parseApprovals(raw: unknown): Record<string, string> {
   return raw as Record<string, string>
 }
 async function update<T>(path: string, change: (raw: unknown) => { value: unknown; result: T }): Promise<T> {
-  await setup()
-  const result = await safeFileStore.updateText<T>(path, text => {
-    const { value, result } = change(text ? JSON.parse(text) : undefined)
-    return { content: JSON.stringify(value), result }
-  }, { mode: 0o600 })
-  await chmod(path, 0o600)
-  return result as T
+  return updateFiles([path], raw => {
+    const { value, result } = change(raw[path] ? JSON.parse(raw[path]) : undefined)
+    return { files: { [path]: JSON.stringify(value) }, result }
+  })
 }
-export async function catalog(): Promise<Catalog> { return parseCatalog(await readJson(catalogPath)) }
+export async function catalog(): Promise<Catalog> { return parseCatalog(await readJson(catalogPath())) }
 export async function mutateCatalog(expectedRevision: number, change: (current: Catalog) => ServiceEntry[]): Promise<Catalog> {
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new ServiceCenterError('Expected revision required', 400)
-  await setup()
-  const result = await safeFileStore.updateTexts<Catalog>([catalogPath, approvalPath], raw => {
-    const current = parseCatalog(raw[catalogPath] ? JSON.parse(raw[catalogPath]) : undefined)
+  const catalogFile = catalogPath()
+  const approvalFile = approvalPath()
+  return updateFiles([catalogFile, approvalFile], raw => {
+    const current = parseCatalog(raw[catalogFile] ? JSON.parse(raw[catalogFile]) : undefined)
     if (expectedRevision !== current.revision) throw new ServiceCenterError('Catalog changed; reload before saving', 409)
     if (!Number.isSafeInteger(current.revision + 1)) throw new ServiceCenterError('Revision limit reached', 409)
     const manifest = validateManifest({ schemaVersion: 1, services: change(current) })
     const next: Catalog = { ...manifest, revision: current.revision + 1 }
-    const approvals = { ...parseApprovals(raw[approvalPath] ? JSON.parse(raw[approvalPath]) : undefined) }
+    const approvals = { ...parseApprovals(raw[approvalFile] ? JSON.parse(raw[approvalFile]) : undefined) }
     for (const [id, approvedUrl] of Object.entries(approvals)) {
       if (current.services.find(service => service.id === id)?.healthUrl === approvedUrl &&
         next.services.find(service => service.id === id)?.healthUrl === approvedUrl) continue
       delete approvals[id]
     }
-    return { files: { [catalogPath]: JSON.stringify(next),
-      ...(Object.keys(approvals).length !== Object.keys(parseApprovals(raw[approvalPath] ? JSON.parse(raw[approvalPath]) : undefined)).length
-        ? { [approvalPath]: JSON.stringify(approvals) } : {}),
+    return { files: { [catalogFile]: JSON.stringify(next),
+      ...(Object.keys(approvals).length !== Object.keys(parseApprovals(raw[approvalFile] ? JSON.parse(raw[approvalFile]) : undefined)).length
+        ? { [approvalFile]: JSON.stringify(approvals) } : {}),
     }, result: next }
-  }, { backup: false, mode: 0o600 })
-  await chmod(catalogPath, 0o600)
-  if (result && await readJson(approvalPath) !== undefined) await chmod(approvalPath, 0o600)
-  return result!
+  })
 }
 export async function saveService(expectedRevision: number, input: unknown): Promise<Catalog> {
   const service = validateService(input)
@@ -108,11 +98,11 @@ export async function importManifest(expectedRevision: number, input: unknown, c
   })
 }
 export async function isEditor(id: number): Promise<boolean> {
-  return parseGrants(await readJson(grantPath)).editorIds.includes(id)
+  return parseGrants(await readJson(grantPath())).editorIds.includes(id)
 }
-export async function listEditors(): Promise<number[]> { return parseGrants(await readJson(grantPath)).editorIds }
+export async function listEditors(): Promise<number[]> { return parseGrants(await readJson(grantPath())).editorIds }
 export async function setEditor(actorId: number, targetId: number, granted: boolean): Promise<number[]> {
-  return update(grantPath, raw => {
+  return update(grantPath(), raw => {
     const current = parseGrants(raw)
     const ids = new Set(current.editorIds)
     if (granted) ids.add(targetId)
@@ -131,9 +121,6 @@ export async function getFavorites(userId: number): Promise<string[]> {
 }
 export async function setFavorite(userId: number, id: string, favorite: boolean): Promise<string[]> {
   const path = favoritesPath(userId)
-  await setup()
-  await mkdir(join(root, 'favorites'), { recursive: true, mode: 0o700 })
-  await chmod(join(root, 'favorites'), 0o700)
   return update(path, raw => {
     const current = raw === undefined ? [] : raw
     if (!Array.isArray(current) || !current.every(value => typeof value === 'string')) throw new Error('Invalid favorites state')
@@ -145,17 +132,17 @@ export async function setFavorite(userId: number, id: string, favorite: boolean)
   })
 }
 export async function isHealthApproved(id: string, url: string): Promise<boolean> {
-  return parseApprovals(await readJson(approvalPath))[id] === url
+  return parseApprovals(await readJson(approvalPath()))[id] === url
 }
 export async function approveHealth(id: string, url: string, approved: boolean): Promise<void> {
-  await setup()
-  await safeFileStore.updateTexts([catalogPath, approvalPath], raw => {
-    const snapshot = parseCatalog(raw[catalogPath] ? JSON.parse(raw[catalogPath]) : undefined)
+  const catalogFile = catalogPath()
+  const approvalFile = approvalPath()
+  await updateFiles([catalogFile, approvalFile], raw => {
+    const snapshot = parseCatalog(raw[catalogFile] ? JSON.parse(raw[catalogFile]) : undefined)
     if (snapshot.services.find(service => service.id === id)?.healthUrl !== url) throw new ServiceCenterError('Health URL changed; reload', 409)
-    const next = { ...parseApprovals(raw[approvalPath] ? JSON.parse(raw[approvalPath]) : undefined) }
+    const next = { ...parseApprovals(raw[approvalFile] ? JSON.parse(raw[approvalFile]) : undefined) }
     if (approved) next[id] = url
     else delete next[id]
-    return { [approvalPath]: JSON.stringify(next) }
-  }, { backup: false, mode: 0o600 })
-  await chmod(approvalPath, 0o600)
+    return { files: { [approvalFile]: JSON.stringify(next) }, result: undefined }
+  })
 }

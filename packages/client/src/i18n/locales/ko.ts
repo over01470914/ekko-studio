@@ -1,8 +1,6 @@
 import { socialMessagesKo } from '../social-messages-locales'
-import { serviceCenterMessages } from '../service-center'
 
 export default {
-  serviceCenter: serviceCenterMessages.ko,
   jev: {
     browserAutomation: "내장 브라우저 자동화",
     browserAutomationHint: "이 프로필에 저장된 JEV 연결을 사용하며 다음 판단부터 적용됩니다. 화면의 레이블을 JEV에 보내지만 입력값은 제외합니다. 비활성화, 서비스 오류 또는 불확실한 판단 시 기존 흐름을 유지합니다.",

@@ -1,5 +1,27 @@
 # Service Center change catalog
 
+## 2026-10-07 (Asia/Taipei) — r3 run 5, card `t_ae549bfa`
+
+- Module version `1.1.0`; host contract v1, manifest `schemaVersion` 1 and the module permission contract v1 are unchanged. Upstream base `942bb78fa2e3722fe14e6778b0ff21d50662fa27` (Studio 0.7.31) is the merge base in this checkout.
+- Generic, non-hardcoded OpenAPI collection: `scripts/studio-extension-openapi.mjs` discovers `modules/studio/extensions/<id>/openapi.mjs`, refuses a symlinked or directory contract file, requires the contract id to match its directory, and `scripts/generate-openapi.mjs` now rejects any scanned extension route outside `/api/studio/<id>/`, any path/operation-id collision, and any extension mutation of a host path or host schema. A missing extension route fails generation instead of emitting a partial document.
+- Executable dependency boundary: `scripts/check-studio-extension-boundary.mjs` asserts the upstream ancestor, the allowed changed paths, the required upstream-equal `router/index.ts`, `AppSidebar.vue`, `safe-file-store.ts` and eleven locale files, the tracked manifest `schemaVersion` and module manifest, and that module sources import only their own files plus the shared registry seam — no host `@/` or `modules/` business imports.
+- Client route registration now refuses a route outside `/<extension-id>`, a name that does not start with `studio.`, a duplicate name and any path already registered by the host. `SafeFileStore` writes UTF-8 without a caller-supplied file `mode`, matching the host seam contract.
+
+### Verified commands (exit 0, this run)
+
+- `node scripts/check-studio-extension-boundary.mjs` — `{changed: 50, upstreamEqual: 14, moduleSourcesChecked: 20}`.
+- `npm run test -- tests/server/service-center.test.ts tests/server/service-center-health.test.ts tests/server/studio-extension-registry.test.ts tests/server/studio-extension-openapi.test.ts tests/server/studio-extension-boundary.test.ts tests/client/service-center.test.ts tests/client/studio-extension-registry.test.ts tests/client/i18n-coverage.test.ts` — 8 files / 45 tests passed.
+- `npm run test:e2e -- tests/e2e/service-center.spec.ts tests/e2e/service-center-live.spec.ts` — mocked browser suite 5 passed (2 opt-in live tests skipped without the isolated fixture).
+- Isolated real fixture (`STUDIO_SERVICE_CENTER_ENABLED=1`, private scratch state, ports 19671/19672): `PLAYWRIGHT_PORT=19672 SERVICE_CENTER_PREVIEW_TOKEN_FILE=<private> SERVICE_CENTER_SCREENSHOT_DIR=<private> npm run test:e2e -- tests/e2e/service-center-live.spec.ts` — 2 real JWT/API/browser tests passed (desktop + 390px compact); screenshots stay in private scratch.
+- `npm run openapi:generate` — 458 endpoints / 58 tags, extension operations inside `/api/studio/service-center/`.
+- `npm run harness:check` and `npm run build` — passed, including public API doc harness and server bundle; existing Vite large-chunk warning only. `git diff --check` clean.
+
+## 2026-10-07 (Asia/Taipei) — r3 extension boundary, card `t_ae549bfa`
+
+- Reconciled with upstream Studio 0.7.31. Service Center is now off by default behind `STUDIO_SERVICE_CENTER_ENABLED=1`; only the authenticated, versioned extension discovery advertises an installed module. The client adds routes/navigation only after validated discovery and resets on auth changes. Upstream Connections navigation icon and API Relay remain intact.
+- Moved server domain, schema and OpenAPI metadata under `modules/studio/extensions/service-center/` with a module-private atomic store; existing instance data paths and wire schema remain unchanged. Moved client view/store/API/components/messages under `modules/studio-extensions/service-center/`. Host adapters alone know the private auth, config, users and client runtime. See [extension contract](../harness/studio-extensions.md).
+- Added default-off, failure, compatibility, auth, route, reset and browser regression coverage. The preceding 1.0.0 entry documents the original r2 implementation and paths at that time; it is preserved as history, not the current import map. No formal release, remote push or production enablement is implied.
+
 ## 2026-10-07 (Asia/Taipei) — card `t_ae549bfa`
 
 - Repository baseline: `200f0eec8aa5da1521958759cf5ab4c365835d6d`; feature branch `feat/service-center`. Root Studio app remains 0.7.26. New Studio Service Center module 1.0.0, JSON manifest schemaVersion 1, Service-Center-local permission contract v1; approved specification r1 → r2. No formal release, merge, production cutover, agent or cloud service change.

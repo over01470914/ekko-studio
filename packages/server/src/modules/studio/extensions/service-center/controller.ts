@@ -1,8 +1,9 @@
 import type { Context } from 'koa'
-import { ServiceCenterError } from '../contracts/service-center/manifest'
-import * as directory from '../services/service-center/directory'
+import { ServiceCenterError } from './manifest'
+import * as directory from './directory'
+import { serviceCenterHost } from './host'
 
-const userId = (ctx: Context) => ctx.state.user?.id
+const userId = (ctx: Context) => serviceCenterHost().actorFor(ctx)
 const bodyOf = (ctx: Context): Record<string, unknown> => {
   const body = ctx.request.body
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ServiceCenterError('JSON object required')

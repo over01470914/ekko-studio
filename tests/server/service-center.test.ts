@@ -12,10 +12,10 @@ describe('Studio Service Center v1', () => {
   let home: string
   let db: DatabaseSync
   let users: typeof import('../../packages/server/src/modules/studio/repositories/users-store')
-  let repository: typeof import('../../packages/server/src/modules/studio/repositories/service-center/catalog')
-  let controller: typeof import('../../packages/server/src/modules/studio/controllers/service-center')
+  let repository: typeof import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
+  let controller: typeof import('../../packages/server/src/modules/studio/extensions/service-center/controller')
   let auth: typeof import('../../packages/server/src/modules/studio/middleware/auth')
-  let manifest: typeof import('../../packages/server/src/modules/studio/contracts/service-center/manifest')
+  let manifest: typeof import('../../packages/server/src/modules/studio/extensions/service-center/manifest')
   let superId: number
   let readerId: number
   let editorId: number
@@ -38,10 +38,17 @@ describe('Studio Service Center v1', () => {
     superId = users.createUser({ username: 'fixture-owner', password: 'test-password', role: 'super_admin' })!.id
     readerId = users.createUser({ username: 'fixture-reader', password: 'test-password', role: 'admin' })!.id
     editorId = users.createUser({ username: 'fixture-editor', password: 'test-password', role: 'admin' })!.id
-    repository = await import('../../packages/server/src/modules/studio/repositories/service-center/catalog')
-    controller = await import('../../packages/server/src/modules/studio/controllers/service-center')
+    const { installServiceCenterHost } = await import('../../packages/server/src/modules/studio/extensions/service-center/host')
+    installServiceCenterHost({ dataRoot: join(home, 'service-center'), actorFor(ctx) {
+      const id = ctx.state.user?.id
+      const user = typeof id === 'number' ? users.findUserById(id) : null
+      if (!user || user.status !== 'active') throw new Error('Inactive actor')
+      return { id, role: user.role }
+    }, eligibleAdmin(id) { const user = users.findUserById(id); return !!user && user.status === 'active' && user.role === 'admin' } })
+    repository = await import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
+    controller = await import('../../packages/server/src/modules/studio/extensions/service-center/controller')
     auth = await import('../../packages/server/src/modules/studio/middleware/auth')
-    manifest = await import('../../packages/server/src/modules/studio/contracts/service-center/manifest')
+    manifest = await import('../../packages/server/src/modules/studio/extensions/service-center/manifest')
   })
   afterEach(async () => {
     db.close()
@@ -83,7 +90,9 @@ describe('Studio Service Center v1', () => {
     expect(manifest.validateManifest(exported)).toEqual(exported)
     expect(JSON.stringify(exported)).not.toMatch(/editorIds|favorites|revision|audit|approved/)
     vi.resetModules()
-    const restarted = await import('../../packages/server/src/modules/studio/repositories/service-center/catalog')
+    const { installServiceCenterHost } = await import('../../packages/server/src/modules/studio/extensions/service-center/host')
+    installServiceCenterHost({ dataRoot: join(home, 'service-center'), actorFor: () => ({ id: superId, role: 'super_admin' }), eligibleAdmin: () => false })
+    const restarted = await import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
     expect(await restarted.catalog()).toEqual(after)
     expect((await stat(join(home, 'service-center', 'catalog.json'))).mode & 0o777).toBe(0o600)
   })

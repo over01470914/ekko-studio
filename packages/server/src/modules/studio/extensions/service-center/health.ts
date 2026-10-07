@@ -2,8 +2,8 @@ import { lookup } from 'dns/promises'
 import { request as httpRequest } from 'http'
 import { request as httpsRequest } from 'https'
 import { isIP } from 'net'
-import { ServiceCenterError, validateNavigationUrl, type ServiceEntry } from '../../contracts/service-center/manifest'
-import { isHealthApproved } from '../../repositories/service-center/catalog'
+import { ServiceCenterError, validateNavigationUrl, type ServiceEntry } from './manifest'
+import { isHealthApproved } from './catalog'
 
 export interface HealthResult {
   state: 'untested' | 'stale' | 'unapproved' | 'disabled' | 'healthy' | 'http_error' | 'redirected' | 'timeout' | 'unreachable' | 'blocked' | 'busy'

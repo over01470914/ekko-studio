@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { NButton, NTag } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
-import type { HealthResult, ServiceEntry } from '@/api/studio/service-center'
+import type { HealthResult, ServiceEntry } from './api'
+import { useServiceCenterTranslation } from './translation'
 const props = defineProps<{ service: ServiceEntry; favorite: boolean; health?: HealthResult; canEdit: boolean }>()
 const emit = defineEmits<{ favorite: []; check: []; edit: []; approve: []; remove: [] }>()
-const { t } = useI18n()
+const t = useServiceCenterTranslation()
 const iconGlyphs: Record<string, string> = { globe: '◎', server: '▤', cloud: '☁', tool: '⌘', database: '▥', monitor: '▣', folder: '▧', shield: '◇' }
 </script>
 

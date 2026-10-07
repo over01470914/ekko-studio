@@ -209,6 +209,12 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
+    // The extension host is default-off; individual extension specs override discovery.
+    if (pathname === '/api/studio/extensions' && request.method() === 'GET') {
+      await route.fulfill(jsonResponse({ contractVersion: 1, extensions: [] }))
+      return
+    }
+
     if (pathname === '/health') {
       await route.fulfill(jsonResponse({ status: 'ok', webui_version: '0.5.23', node_version: '23.0.0' }))
       return

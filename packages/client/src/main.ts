@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { computed, createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
 import { i18nReady } from './i18n'
@@ -6,6 +6,7 @@ import App from './App.vue'
 import './styles/global.scss'
 import { desktopBridge } from '@/utils/desktop-bridge'
 import { useTheme } from '@/composables/useTheme'
+import { registerStudioExtensions } from '@/bootstrap/studio-extensions'
 
 // Apply theme classes before mount to prevent FOUC (Flash of Unstyled Content)
 function storedPreference(key: string, fallback: string): string {
@@ -62,6 +63,9 @@ async function mountApp(): Promise<void> {
   }
   app.use(createPinia())
   app.use(i18n)
+  const theme = computed(() => useTheme().isDark.value ? 'dark' : 'light')
+  const extensions = registerStudioExtensions(router, i18n.global.locale, theme)
+  await extensions.ensure()
   app.use(router)
   await router.isReady().catch(() => undefined)
   app.mount('#app')

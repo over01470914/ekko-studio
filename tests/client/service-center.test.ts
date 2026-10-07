@@ -6,9 +6,9 @@ const api = vi.hoisted(() => ({
   fetchCatalog: vi.fn(), saveService: vi.fn(), deleteService: vi.fn(), setFavorite: vi.fn(), checkHealth: vi.fn(),
 }))
 const auth = vi.hoisted(() => ({ invalidate: (() => {}) as () => void }))
-vi.mock('@/api/studio/service-center', () => api)
-vi.mock('@/api/auth-invalidation', () => ({ onAuthInvalidated: (callback: () => void) => { auth.invalidate = callback; return () => {} } }))
-import { useServiceCenterStore } from '@/stores/studio/service-center'
+vi.mock('@/modules/studio-extensions/service-center/api', () => api)
+vi.mock('@/modules/studio-extensions/service-center/host', () => ({ onServiceCenterReset: (callback: () => void) => { auth.invalidate = callback; return () => {} } }))
+import { useServiceCenterStore } from '@/modules/studio-extensions/service-center/store'
 
 const service = { id: 'sample', name: 'Sample', description: 'Browser UI', url: 'https://example.org/', icon: 'globe', category: 'Tools', tags: [], network: 'public', enabled: true, sortOrder: 0 }
 const response = (revision = 1) => ({ revision, services: [service], favorites: [], health: {}, capabilities: { canManageServices: false, canManageEditors: false } })

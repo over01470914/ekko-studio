@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { NButton, NFormItem, NInput, NInputNumber, NSelect, NSwitch } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
-import type { ServiceEntry } from '@/api/studio/service-center'
+import type { ServiceEntry } from './api'
+import { useServiceCenterTranslation } from './translation'
 const props = defineProps<{ service: ServiceEntry | null; busy: boolean }>()
 const emit = defineEmits<{ save: [service: ServiceEntry]; cancel: [] }>()
-const { t } = useI18n()
+const t = useServiceCenterTranslation()
 const draft = ref<ServiceEntry>(props.service ? { ...props.service, tags: [...props.service.tags] } : {
   id: '', name: '', description: '', url: '', icon: 'globe', category: '', tags: [], network: 'public', enabled: true, sortOrder: 0,
 })

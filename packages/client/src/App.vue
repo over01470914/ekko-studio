@@ -132,7 +132,7 @@ provide(mobileNavigationKey, {
   target: computed(() => !isWideViewport.value && hasNavigationRail.value ? mobileSidebarHost.value : null),
 });
 const hasMobileContextSidebar = computed(() =>
-  !['hermes.connections', 'hermes.agentManager', 'hermes.models', 'hermes.apiRelay'].includes(String(route.name)),
+  route.meta?.standalonePage !== true && !['hermes.connections', 'hermes.agentManager', 'hermes.models', 'hermes.apiRelay'].includes(String(route.name)),
 );
 watch([hasNavigationRail, isWideViewport], () => { mobileNavigationOpen.value = false; });
 watch(sessionSearchOpen, (open) => { if (open) mobileNavigationOpen.value = false; });
@@ -174,6 +174,7 @@ const showAppSidebar = computed(
   () =>
     !isLoginPage.value &&
     !isStandaloneChatPage.value &&
+    route.meta?.standalonePage !== true &&
     !usesPageSidebar.value &&
     !usesHermesConfigSidebar.value &&
     !usesEkkoConfigSidebar.value &&
@@ -186,7 +187,7 @@ const showMobileMenuButton = computed(
   () =>
     !isLoginPage.value &&
     !isStandaloneChatPage.value &&
-    (showAppSidebar.value ||
+    (route.meta?.standalonePage === true || showAppSidebar.value ||
       usesPageSidebar.value ||
       usesHermesConfigSidebar.value ||
       usesEkkoConfigSidebar.value ||

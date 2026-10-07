@@ -229,12 +229,16 @@
       "description": "In-memory Agent installation, version, and source status"
     },
     {
+      "name": "Coding Agents",
+      "description": "Coding agent installation, config, and runs"
+    },
+    {
       "name": "Service Center",
       "description": "Studio service directory, personal favorites, health and local editor grants"
     },
     {
-      "name": "Coding Agents",
-      "description": "Coding agent installation, config, and runs"
+      "name": "Studio Extensions",
+      "description": ""
     },
     {
       "name": "Terminal",
@@ -13343,6 +13347,78 @@
           }
         },
         "x-session-share-permission": "input"
+      }
+    },
+    "/api/studio/extensions": {
+      "get": {
+        "tags": [
+          "Studio Extensions"
+        ],
+        "summary": "Discover enabled Studio extensions",
+        "operationId": "listStudioExtensions",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Installed and enabled extension capabilities only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "contractVersion",
+                    "extensions"
+                  ],
+                  "properties": {
+                    "contractVersion": {
+                      "type": "integer",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "extensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "version",
+                          "apiBase",
+                          "capabilities"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "apiBase": {
+                            "type": "string"
+                          },
+                          "capabilities": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
       }
     },
     "/api/studio/files/copy": {

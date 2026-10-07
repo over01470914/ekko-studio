@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { onAuthInvalidated } from '@/api/auth-invalidation'
-import * as api from '@/api/studio/service-center'
-import type { CatalogResponse, HealthResult, ServiceEntry } from '@/api/studio/service-center'
+import { onServiceCenterReset } from './host'
+import * as api from './api'
+import type { CatalogResponse, HealthResult, ServiceEntry } from './api'
 
 const empty = (): CatalogResponse => ({ revision: 0, services: [], favorites: [], health: {}, capabilities: { canManageServices: false, canManageEditors: false } })
 export const useServiceCenterStore = defineStore('serviceCenter', () => {
@@ -10,7 +10,7 @@ export const useServiceCenterStore = defineStore('serviceCenter', () => {
   const loading = ref(false)
   const error = ref('')
   let requestId = 0
-  onAuthInvalidated(() => { requestId++; catalog.value = empty(); error.value = '' })
+  onServiceCenterReset(() => { requestId++; catalog.value = empty(); error.value = ''; loading.value = false })
 
   async function refresh() {
     const current = ++requestId

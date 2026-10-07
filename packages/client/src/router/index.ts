@@ -36,11 +36,6 @@ const router = createRouter({
       component: () => import('@/views/hermes/ChatView.vue'),
     },
     {
-      path: '/service-center',
-      name: 'studio.serviceCenter',
-      component: () => import('@/views/ServiceCenterView.vue'),
-    },
-    {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
       component: () => import('@/views/hermes/ChatView.vue'),

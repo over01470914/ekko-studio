@@ -1,8 +1,6 @@
 import { socialMessagesAr } from '../social-messages-locales'
-import { serviceCenterMessages } from '../service-center'
 
 export default {
-  serviceCenter: serviceCenterMessages.ar,
   jev: {
     browserAutomation: "أتمتة المتصفح المدمج",
     browserAutomationHint: "تستخدم التقييمات الاختيارية اتصال JEV المحفوظ لهذا الملف الشخصي بدءًا من التقييم التالي. تُرسل التسميات المرئية دون قيم الإدخال. يستمر المسار المعتاد عند التعطيل أو عدم التوفر أو عدم اليقين.",

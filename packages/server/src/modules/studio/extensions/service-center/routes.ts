@@ -1,5 +1,5 @@
 import Router from '@koa/router'
-import * as ctrl from '../controllers/service-center'
+import * as ctrl from './controller'
 
 export const serviceCenterRoutes = new Router()
 serviceCenterRoutes.get('/api/studio/service-center/catalog', ctrl.listCatalog)

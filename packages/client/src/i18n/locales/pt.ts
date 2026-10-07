@@ -1,8 +1,6 @@
 import { socialMessagesPt } from '../social-messages-locales'
-import { serviceCenterMessages } from '../service-center'
 
 export default {
-  serviceCenter: serviceCenterMessages.pt,
   jev: {
     browserAutomation: "Automação do navegador integrado",
     browserAutomationHint: "As avaliações opcionais usam a conexão JEV salva neste perfil a partir da próxima avaliação. Os rótulos visíveis são enviados ao JEV, sem os valores digitados. Quando desativado, indisponível ou incerto, o fluxo original é mantido.",

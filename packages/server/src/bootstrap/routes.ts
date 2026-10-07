@@ -14,7 +14,7 @@ import { announcementRoutes } from '../modules/studio/routes/announcements'
 import { appConnectionRoutes, appRelayRoutes } from './app-relay'
 import { devicePublicRoutes, deviceRoutes } from './devices'
 import { socialMessageRoutes } from '../modules/studio/routes/social-messages'
-import { serviceCenterRoutes } from '../modules/studio/routes/service-center'
+import { studioExtensions } from './studio-extensions'
 import {
   claudeCodeProxyRoutes,
   codexProxyRoutes,
@@ -100,7 +100,9 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
 
   // --- Protected routes (auth required) ---
   app.use(authProtectedRoutes.routes())
-  app.use(serviceCenterRoutes.routes())
+  const extensions = studioExtensions()
+  app.use(extensions.discovery.routes())
+  extensions.routes.forEach(router => app.use(router.routes()))
   app.use(deviceRoutes.routes())
   app.use(mcuDeviceRoutes.routes())
   app.use(appConnectionRoutes.routes())

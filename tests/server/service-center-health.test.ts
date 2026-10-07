@@ -10,8 +10,8 @@ describe('Service Center bounded health checks', () => {
   let home: string
   let port: number
   let requests: Array<{ path: string; headers: Record<string, unknown> }>
-  let repository: typeof import('../../packages/server/src/modules/studio/repositories/service-center/catalog')
-  let health: typeof import('../../packages/server/src/modules/studio/services/service-center/health')
+  let repository: typeof import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
+  let health: typeof import('../../packages/server/src/modules/studio/extensions/service-center/health')
   beforeEach(async () => {
     home = await mkdtemp(join(process.env.TMPDIR || '/tmp/', 'service-health-test-'))
     vi.stubEnv('HERMES_WEB_UI_HOME', home)
@@ -26,8 +26,10 @@ describe('Service Center bounded health checks', () => {
     })
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     port = (server.address() as { port: number }).port
-    repository = await import('../../packages/server/src/modules/studio/repositories/service-center/catalog')
-    health = await import('../../packages/server/src/modules/studio/services/service-center/health')
+    const { installServiceCenterHost } = await import('../../packages/server/src/modules/studio/extensions/service-center/host')
+    installServiceCenterHost({ dataRoot: join(home, 'service-center'), actorFor: () => ({ id: 1, role: 'super_admin' }), eligibleAdmin: () => false })
+    repository = await import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
+    health = await import('../../packages/server/src/modules/studio/extensions/service-center/health')
   })
   afterEach(async () => {
     server.closeAllConnections()
@@ -67,7 +69,7 @@ describe('Service Center bounded health checks', () => {
       { address: '169.254.169.254', family: 4 },
     ]) }))
     vi.resetModules()
-    const withDns = await import('../../packages/server/src/modules/studio/services/service-center/health')
+    const withDns = await import('../../packages/server/src/modules/studio/extensions/service-center/health')
     await expect(withDns.resolveHealthTarget('http://mixed.example.org/health')).rejects.toThrow('Unsafe health destination')
     expect(requests).toHaveLength(0)
   })

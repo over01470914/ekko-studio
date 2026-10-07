@@ -1,8 +1,6 @@
 import { socialMessagesFr } from '../social-messages-locales'
-import { serviceCenterMessages } from '../service-center'
 
 export default {
-  serviceCenter: serviceCenterMessages.fr,
   jev: {
     browserAutomation: "Automatisation du navigateur intégré",
     browserAutomationHint: "Les évaluations facultatives utilisent la connexion JEV enregistrée pour ce profil dès la prochaine évaluation. Les libellés visibles sont envoyés à JEV, sans les valeurs saisies. Le fonctionnement habituel est conservé si le service est désactivé, indisponible ou incertain.",

@@ -1,4 +1,5 @@
-import { request } from '../client'
+import { serviceCenterClientHost } from './host'
+const request = <T>(path: string, options?: RequestInit) => serviceCenterClientHost().request<T>(path, options)
 
 export type Network = 'tailscale' | 'lan' | 'public' | 'local'
 export interface ServiceEntry {
@@ -37,4 +38,4 @@ export const checkHealth = (id: string) => request<HealthResult>(`${base}/health
 export const approveHealth = (id: string, approved: boolean) => request<{ approved: boolean }>(`${base}/health/${encodeURIComponent(id)}/approval`, { method: 'PUT', body: JSON.stringify({ approved }) })
 export const fetchEditors = () => request<{ editorIds: number[] }>(`${base}/editors`)
 export const setEditor = (id: number, granted: boolean) => request<{ editorIds: number[] }>(`${base}/editors/${id}`, { method: 'PUT', body: JSON.stringify({ granted }) })
-export const fetchManagedUsers = () => request<{ users: Array<{ id: number; username: string; role: string; status: string }> }>('/api/auth/users')
+export const fetchManagedUsers = () => serviceCenterClientHost().managedUsers()

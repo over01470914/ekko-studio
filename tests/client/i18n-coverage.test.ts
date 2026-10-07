@@ -16,6 +16,7 @@ import pt from '@/i18n/locales/pt'
 import ru from '@/i18n/locales/ru'
 import ar from '@/i18n/locales/ar'
 import { createI18n } from 'vue-i18n'
+import { serviceCenterMessages } from '@/modules/studio-extensions/service-center/messages'
 
 const SOURCE_ROOT = join(process.cwd(), 'packages/client/src')
 
@@ -75,6 +76,8 @@ function collectLiteralTranslationKeys(): string[] {
   const translationCall = /(?:\b|\$)t\(\s*['"]([^'"]+)['"]/g
 
   for (const file of walkFiles(SOURCE_ROOT)) {
+    // Extension-local catalogs have their own coverage below, not host global keys.
+    if (file.includes('/modules/studio-extensions/service-center/')) continue
     const source = readFileSync(file, 'utf8')
     for (const match of source.matchAll(translationCall)) {
       keys.add(match[1])
@@ -123,6 +126,28 @@ function flattenLeafPaths(value: unknown, prefix = ''): Map<string, string> {
 function interpolationNames(value: string): string[] {
   return [...value.matchAll(/\{([^}]+)\}/g)].map(match => match[1]).sort()
 }
+
+it('covers Service Center local translations without merging them into host locale dictionaries', () => {
+  const moduleRoot = join(SOURCE_ROOT, 'modules/studio-extensions/service-center')
+  const keys = new Set<string>()
+  for (const file of walkFiles(moduleRoot)) {
+    const source = readFileSync(file, 'utf8')
+    for (const match of source.matchAll(/(?:\b|\$)t\(\s*['"]([^'"]+)['"]/g)) keys.add(match[1])
+  }
+  const english = flattenLeafPaths(serviceCenterMessages.en)
+  for (const locale of supportedLocales) {
+    const catalog = serviceCenterMessages[locale]
+    expect(catalog, locale).toBeDefined()
+    const actual = flattenLeafPaths(catalog)
+    expect([...actual.keys()].sort(), locale).toEqual([...english.keys()].sort())
+    for (const [key, value] of english) {
+      expect(actual.get(key)?.trim(), `${locale}: ${key}`).toBeTruthy()
+      expect(interpolationNames(actual.get(key)!), `${locale}: ${key}`).toEqual(interpolationNames(value))
+    }
+    expect([...keys].filter(key => !hasPath({ serviceCenter: catalog }, key)), locale).toEqual([])
+    expect(hasPath(rawMessages[locale], 'serviceCenter.title'), locale).toBe(false)
+  }
+})
 
 it('localizes all JEV messages and error codes without relying on English fallback', () => {
   const expected = flattenLeafPaths(en.jev)

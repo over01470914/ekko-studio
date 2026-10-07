@@ -7,6 +7,7 @@ import { isStoredSuperAdmin } from '@/api/client'
 import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
 import PageSidebarFooter from './PageSidebarFooter.vue'
 import { useMobileNavigation } from '@/composables/usePageSidebar'
+import { extensionNavigation } from '@/modules/studio-extensions/registry'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -27,7 +28,7 @@ const activeKey = computed(() => {
   if (name.startsWith('hermes.groupChat')) return 'group'
   if (name.startsWith('hermes.history')) return 'history'
   if (name === 'hermes.apiRelay') return 'apiRelay'
-  return entries.value.find(entry => entry.route === name)?.key || 'settings'
+  return entries.value.find(entry => entry.route === name)?.key || extensionNavigation.value.find(entry => entry.route === name)?.key || 'settings'
 })
 const mobileNavigation = useMobileNavigation()
 function handleNavigate(key: string) {
@@ -48,6 +49,14 @@ function handleNavigate(key: string) {
           </RouteLinkItem>
         </template>
         {{ t(entry.label) }}
+      </NTooltip>
+      <NTooltip v-for="entry in extensionNavigation" :key="entry.key" placement="right" trigger="hover">
+        <template #trigger>
+          <RouteLinkItem class="studio-navigation-rail__item" :to="{ name: entry.route }" :active="activeKey === entry.key" :aria-label="entry.label" @click="handleNavigate(entry.key)">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="entry.path" /></svg>
+          </RouteLinkItem>
+        </template>
+        {{ entry.label }}
       </NTooltip>
       <NTooltip placement="right" trigger="hover">
         <template #trigger>

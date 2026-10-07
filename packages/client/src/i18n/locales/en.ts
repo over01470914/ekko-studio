@@ -1,8 +1,6 @@
 import { socialMessagesEn } from '../social-messages'
-import { serviceCenterMessages } from '../service-center'
 
 export default {
-  serviceCenter: serviceCenterMessages.en,
   jev: {
     browserAutomation: "Built-in browser automation",
     browserAutomationHint: "Optional assessments use this Profile’s saved JEV connection and take effect on the next assessment. Rendered page labels are sent to JEV; input values are excluded. Disabled, unavailable or uncertain assessments preserve the original flow.",
