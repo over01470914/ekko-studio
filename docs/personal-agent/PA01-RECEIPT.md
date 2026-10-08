@@ -210,9 +210,11 @@ the official-SDK QA executable is in the sibling `pa01-qa-t_ca822df3-run2` direc
 
 - Branch `feat/personal-assistant-files` pushed to the verified fork origin
   (`https://github.com/over01470914/ekko-studio.git`).
-- QA-06 implementation SHA and final review HEAD are recorded separately in this card's
-  run metadata after push and exact fork readback (a receipt cannot embed its own commit
-  hash). The prior containment implementation was `6705ff453fd302c5eaf5b742eaf2073589296634`;
+- QA-06 implementation SHA: `39e16c47b584e207ce257ed1117d023ada6197c8`, pushed and read back
+  from the exact fork feature ref. This final receipt-only successor changes no tested code;
+  its review HEAD/remote SHA is recorded separately in the card's run metadata after push
+  and exact readback (a receipt cannot embed its own commit hash).
+  The prior containment implementation was `6705ff453fd302c5eaf5b742eaf2073589296634`;
   its receipt/review HEAD `030b73c2088aafd2689f0aa9607d63a2feb517e3` was rejected for QA-06.
   Earlier rejected HEAD `16cd76d91c775a88c7ae2a7e8e2f0fb6f69dc0bc` and receipt
   `7720580ab45effde6828c18df07b5c1399e23436` are historical, not current-head claims.
