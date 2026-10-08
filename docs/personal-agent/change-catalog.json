@@ -67,6 +67,7 @@
         "scripts/personal-agent-build.mjs",
         "scripts/personal-agent-acceptance.mjs",
         "scripts/personal-agent-fd-probe.mjs",
+        "scripts/personal-lab-module-off-smoke.py",
         "tests/personal-assistant/engine.test.ts",
         "tests/personal-assistant/transport.test.ts",
         "tests/server/personal-agent-module.test.ts",
@@ -92,6 +93,7 @@
         "npm run build: passed",
         "python3 scripts/validate-personal-agent-catalog.py: must pass before commit",
         "scripts/personal-lab.py status/stop: exact-owner stop, port released, production fingerprints unchanged"
+        ,"python3 scripts/personal-lab-module-off-smoke.py: lab healthy 0.7.31, discovery 401 unauthenticated / 200 authenticated, advertised extensions [], personal-agent absent, /api/studio/personal-agent/state 404 when off"
       ],
       "limitations": [
         "Same-machine loopback protocol acceptance only; no physical Windows, second host or remote-network verification",

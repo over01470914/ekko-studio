@@ -27,6 +27,7 @@ const shared = new Set([
   'scripts/validate-personal-agent-catalog.py',
   'scripts/personal-agent-build.mjs', 'scripts/personal-agent-acceptance.mjs',
   'scripts/personal-agent-fd-probe.mjs',
+  'scripts/personal-lab-module-off-smoke.py',
 ])
 const tests = /^(tests\/(client\/(service-center|studio-extension-registry|i18n-coverage)\.test\.ts|server\/(service-center|service-center-health|studio-extension-registry|studio-extension-openapi|studio-extension-boundary)\.test\.ts|e2e\/(service-center|service-center-live|fixtures)\.(spec\.)?ts|helpers\/service-center-preview\.ts))$/
 export function allowedChangedPath(path) {
