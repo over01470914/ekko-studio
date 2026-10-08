@@ -20,6 +20,14 @@ await esbuild.build({
   bundle: true, platform: 'node', target: 'node23', format: 'cjs', outdir: outDir,
   external: ['node:sqlite'], sourcemap: true, minify: true, logLevel: 'info',
 })
+// Build the declared public main/export inside its package, beside the native
+// companion. The standalone node/MCP artifacts are separate consumers.
+await esbuild.build({
+  entryPoints: [resolve(rootDir, 'packages/personal-assistant/src/index.ts')],
+  bundle: true, platform: 'node', target: 'node23', format: 'cjs',
+  outfile: resolve(nativeDir, 'index.cjs'), external: ['node:sqlite'],
+  sourcemap: true, minify: true, logLevel: 'info',
+})
 copyFileSync(resolve(rootDir, 'packages/personal-assistant/protocol.schema.json'), resolve(outDir, 'protocol.schema.json'))
 chmodSync(resolve(outDir, 'node.js'), 0o755)
 chmodSync(resolve(outDir, 'mcp.js'), 0o755)

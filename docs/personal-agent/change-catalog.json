@@ -155,6 +155,38 @@
         "No production cutover, default-profile/config/memory/MCP writes, new dependencies or public wire/SQLite schema changes",
         "Same-card independent QA acceptance remains required; implementation self-checks and QA-authored probe reruns are not a QA approval"
       ]
+    },
+    {
+      "id": "PA01-QA07",
+      "project": "ekko-personal-agent",
+      "date": "2026-10-08+08:00",
+      "revision": "public package runtime artifact; protocol v1 / engine 0.1.0 / module 0.1.0 / native ABI 2 unchanged",
+      "component": "declared package main/export build and real source-free consumer regression",
+      "files": [
+        "scripts/personal-agent-build.mjs",
+        "tests/personal-assistant/public-entry.test.ts",
+        "docs/personal-agent/PA01-RECEIPT.md",
+        "docs/personal-agent/CHANGELOG.md",
+        "docs/personal-agent/change-catalog.json"
+      ],
+      "contracts": [
+        "SPEC.md versioned public exports: existing main/default export dist/index.cjs is emitted inside packages/personal-assistant; native ABI 2 companion and canonical schema resolve from the real consumer",
+        "No dependency, manifest/version, public wire/OpenAPI, authorization, SQLite or native safety change"
+      ],
+      "verification": [
+        "public-entry.test.ts TDD: 5/5 MODULE_NOT_FOUND before build fix, 5/5 pass afterwards on Node26.7.0 and Lab Node24.21.0; main/export and relocated source-free consumers execute real CRUD/status/restore, readback, conflict, revoke and durable unknown/no redispatch; absent native fails closed",
+        "Focused 9 files: 92/92 passed, retaining all 40 safety regressions",
+        "Original QA package-contract-probe.cjs: main/export/standalone 3/3 pass on Node26.7.0 and Node24.21.0; original revision probe 8/8 controls and 4/4 real editor races preserved on both Nodes",
+        "Full build, server typecheck, native/public build, harness and OpenAPI exit 0; 5 personal routes / 31 Personal schemas / 11 unchanged Service Center routes; package/standalone/server native hashes match",
+        "Tracked acceptance and QA official SDK gate: 11 MCP calls each, real two-node loopback and independent receiving-side disk readback",
+        "Lab4362 exact-owner stop PID67414 then start PID4940, port released and production fingerprints unchanged; module-off health ok, discovery 401/200, extensions=[], personal route404; production Bridge54908 ready at observations",
+        "Real 1440x1000 unauthenticated baseline login screenshot and credential-free logs/JSON under developer scratch pa01-qa07-run7-8p6epi; strict catalog validation required before push"
+      ],
+      "limitations": [
+        "macOS/POSIX same-machine fixtures only; Linux, physical Windows, separate hosts/network, UI/native installer and live central Naya remain unverified",
+        "Prior unknown/no-redispatch and non-filesystem-wide-CAS limitations are unchanged; QA probe reruns are self-verification, not independent acceptance",
+        "No production/default-profile/config/memory/MCP change, PR, release, tag or npm publish; same-card QA review still gates PA02/PA03"
+      ]
     }
   ]
 }

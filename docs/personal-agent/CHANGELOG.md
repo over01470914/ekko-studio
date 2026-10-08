@@ -1,5 +1,12 @@
 # Personal Agent changelog
 
+## PA01 / QA-07 / public package artifact — 2026-10-08
+
+- Emit the already-declared `packages/personal-assistant/dist/index.cjs` main/default export and its source map alongside the existing native ABI 2 companion; retain the standalone node/MCP build. No manifest/version, wire, dependency, native safety or authorization change.
+- Add a real consumer regression through main and package self-export, also relocated with only manifest/schema/dist and no source/repository fallback. Exercise receiver search/read/create/expected-hash overwrite/owner-confirmed delete/status/restore, independent disk readback, conflict, live revoke and persistent unknown/no redispatch; absent native fails closed before state.
+- TDD: 5 failing missing-entry cases before fix, then 5 passed on Node26.7.0 and Lab Node24.21.0. Focused 92/92 across 9 files (40 existing safety regressions); original QA package probe 3/3 and revision controls 8/8 plus 4/4 real races preserved on both Node versions. Both official MCP gates still pass 11 calls. Same-card independent QA acceptance remains required.
+- Full build/typecheck/native/OpenAPI/harness gates pass, existing Service Center routes are unchanged, and exact-owner Lab module-off smoke remains healthy. Physical-host/Windows, installer/UI and live central Naya verification remain outside PA01.
+
 ## PA01 / QA-06 / internal native ABI 2 — 2026-10-08
 
 - Bound each native transfer to the final verified file revision: exact `dev`/`ino`, size, nanosecond `mtime`/`ctime` and bounded bytes. `openat(O_NOFOLLOW)` reopens on the anchored directory fd, compares bytes and named/opened revisions, then performs `linkat`/`renameat`. An edit completed before native entry cannot replace or delete an unapproved regular-file revision.

@@ -102,11 +102,11 @@ scope and are not claimed here.
   Production Bridge was already PID `54908` before this run; the earlier `80660` must not
   be used as evidence of continuity for this run.
 
-Live module-off isolation on the isolated Lab
+Recorded QA-06 module-off isolation on the isolated Lab
 (`python3 scripts/personal-lab-module-off-smoke.py`, re-run after the QA-06 build):
 `health=ok`, `webui_version=0.7.31`, discovery `401` unauthenticated and `200` authenticated
 with `extensions=[]`, `personal-agent` absent, and `/api/studio/personal-agent/state` `404`
-while the flag is off. The Lab is running as exact-owned PID `67414`, started by
+while the flag is off. At that observation the Lab was running as exact-owned PID `67414`, started by
 this worker through `scripts/personal-lab.py` (status verified against the owner record
 before start); production Bridge `54908` was `ready` at the recorded stop/start/status observations.
 No production lifecycle operation was performed. Honest
@@ -207,24 +207,75 @@ The QA executable remains at
 `/Users/garbagod/.hermes/profiles/qa/cache/scratch/pa01-qa-t_ca822df3-run4/independent-rework-probes.cjs`;
 the official-SDK QA executable is in the sibling `pa01-qa-t_ca822df3-run2` directory.
 
+## QA-07 public package artifact rework (candidate, not QA approval)
+
+QA rejected review HEAD `2480d579de8b4825e70db8d1c26b653f336f161c` for a missing
+declared runtime artifact: `package.json` main/default export referenced `dist/index.cjs`,
+but the build emitted JavaScript only into the repository's standalone directory.
+The original QA probe reproduced both `MODULE_NOT_FOUND` failures while its standalone
+receiver control passed. No file-protocol, authorization or native revision rule changed.
+
+- `scripts/personal-agent-build.mjs` now also bundles the public entry into
+  `packages/personal-assistant/dist/index.cjs` with its own source map, beside the existing
+  ABI 2 native companion. The checked-in main/exports/version remain unchanged. The
+  canonical JSON Schema is bundled and remains available through its declared schema export.
+- `tests/personal-assistant/public-entry.test.ts` builds through the named command and
+  starts fresh real Node consumers through directory main and package self-export. Both
+  are also exercised after copying only manifest/schema/dist to a private, source-free
+  package directory with no repository output or node_modules fallback. Each consumer
+  executes search/read/create/expected-hash overwrite/owner-confirmed delete/status/restore
+  with independent disk hash/readback, conflict, immediate revoke and durable unknown
+  across reopen with no redispatch. A missing native companion fails closed before state.
+- TDD: **5/5 failed** with `MODULE_NOT_FOUND` before the build fix, then **5/5 passed**.
+  The same public consumer tests pass on Node **26.7.0** and Lab Node **24.21.0**. Final
+  focused verification is **92/92 across 9 files**, retaining all **40** safety regressions.
+  QA's unchanged package probe passes all three main/export/standalone controls on both Nodes.
+- QA's unchanged revision probe passes **8/8 controls + 4/4 real editor races** on both
+  Node versions; newer revisions remain untouched. Both tracked and QA official-SDK gates
+  pass **11 real MCP calls** with independent target readback. These reruns are implementation
+  self-verification, not an independent QA approval.
+- Full build, server typecheck, native/public build, harness and OpenAPI generation exit **0**.
+  OpenAPI is unchanged: **5** personal routes / **31** Personal schemas and **11** byte-identical
+  Service Center routes. Package/standalone/server native binaries retain the same SHA-256.
+- Lab `4362` was stopped only through `scripts/personal-lab.py` after checking exact owner
+  PID `67414` and cwd, then restarted as exact-owned PID `4940`. Stop released the port and
+  reported unchanged production fingerprints. Module-off smoke again proves health `ok`,
+  discovery `401`/`200`, `extensions=[]` and personal route `404`. Production Bridge
+  `54908` remained ready at these observations; no production lifecycle operation occurred.
+- Current credential-free evidence is under
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa01-qa07-run7-8p6epi/`:
+  RED/GREEN/focused logs and JSON, original QA probes, build/harness/typecheck/OpenAPI logs,
+  gate-results, native hashes and Lab receipts. `module-off-login-baseline.png` is a real
+  **1440x1000 unauthenticated existing Lab login only**, not personal UI acceptance.
+
+The previously documented macOS/POSIX-only, crash-atomicity and post-final-native-check
+CAS limitations still apply. No Linux/physical Windows/separate-host/network, UI/installer
+or live central Naya acceptance is claimed. Same-card QA must accept before downstream work.
+
 ## Publication
 
 - Branch `feat/personal-assistant-files` pushed to the verified fork origin
   (`https://github.com/over01470914/ekko-studio.git`).
-- QA-06 implementation SHA: `39e16c47b584e207ce257ed1117d023ada6197c8`, pushed and read back
-  from the exact fork feature ref. This final receipt-only successor changes no tested code;
-  its review HEAD/remote SHA is recorded separately in the card's run metadata after push
+- QA-07 implementation SHA and the final receipt-only review HEAD/remote SHA are recorded
+  separately in the native card metadata after feature-ref push and exact readback; a receipt
+  cannot embed its own commit hash. QA-07 does not carry a QA acceptance or release claim.
+- Historical QA-06 implementation SHA: `39e16c47b584e207ce257ed1117d023ada6197c8`, pushed and read back
+  from the exact fork feature ref. That QA-06 receipt-only successor changed no tested code;
+  its review HEAD/remote SHA was recorded separately in the card's run metadata after push
   and exact readback (a receipt cannot embed its own commit hash).
   The prior containment implementation was `6705ff453fd302c5eaf5b742eaf2073589296634`;
   its receipt/review HEAD `030b73c2088aafd2689f0aa9607d63a2feb517e3` was rejected for QA-06.
   Earlier rejected HEAD `16cd76d91c775a88c7ae2a7e8e2f0fb6f69dc0bc` and receipt
   `7720580ab45effde6828c18df07b5c1399e23436` are historical, not current-head claims.
 - No PR, release, tag, npm publish or production cutover was performed.
-- Current tracked two-node evidence:
+- Recorded QA-06 tracked two-node evidence:
   `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-oP8DlV/acceptance-evidence.json`.
-  Current QA official-SDK independent readback/state:
+  Recorded QA-06 QA official-SDK independent readback/state:
   `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa01-qa06-run5-K5g07e/official-mcp-ZAMrMM`.
   Generated private peer configs are not deliverable artifacts.
+  QA-07 original-SDK fixture/readback is retained at
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa01-qa07-run7-8p6epi/official-mcp/official-mcp-GjyRuT`;
+  exact-head successor outputs are named in the card handoff, not confused with prior receipts.
 
 ## Verification commands (results in the card metadata)
 
@@ -232,6 +283,7 @@ the official-SDK QA executable is in the sibling `pa01-qa-t_ca822df3-run2` direc
 node scripts/personal-agent-build.mjs
 node node_modules/vitest/vitest.mjs run tests/personal-assistant/engine.test.ts \
   tests/personal-assistant/transport.test.ts tests/personal-assistant/safety-regressions.test.ts \
+  tests/personal-assistant/public-entry.test.ts \
   tests/server/personal-agent-module.test.ts tests/server/personal-agent-contract.test.ts --no-file-parallelism
 node node_modules/vitest/vitest.mjs run tests/server/studio-extension-registry.test.ts \
   tests/server/studio-extension-openapi.test.ts tests/server/studio-extension-boundary.test.ts
