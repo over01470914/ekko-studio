@@ -9,9 +9,13 @@ decision remains Naya; this document records what was actually built and execute
   or private DB/auth import). It owns the canonical protocol schema at
   `packages/personal-assistant/protocol.schema.json` (protocol v1, module `0.1.0`,
   engine `0.1.0`) and the receiver-owned bounded operations.
-- Receiver (`src/receiver.ts`, `src/files.ts`, `src/receipts.ts`):
-  - root allowlist bound at configuration time by `dev`/`ino` + `realpath`, re-verified on
-    every request; a caller never supplies an absolute root during an operation;
+- Receiver (`src/receiver.ts`, `src/files.ts`, `src/posix.ts`, `native/posix.c`, `src/receipts.ts`):
+  - root allowlist bound at configuration time by exact 64-bit `dev`/`ino` + `realpath`, then
+    reached through an anchored descriptor chain: each path segment is re-typed with
+    `fstatat(AT_SYMLINK_NOFOLLOW)` and opened with `openat(..., O_NOFOLLOW)`, and the resulting
+    `fstat` identity must match, so resolution and the operation that follows share one
+    descriptor instead of an absolute path string. A caller never supplies an absolute root
+    during an operation;
   - explicit owner-scoped grants with independent `search`/`read`/`write`/`delete`
     capabilities and a monotonic `grantRevision`; revocation is rechecked from durable
     state on every request, including an already-open connection;
@@ -20,10 +24,13 @@ decision remains Naya; this document records what was actually built and execute
   - bounded read with real byte range, full-file SHA-256, honest `truncated`, and refusal
     to parse binary as Office/PDF;
   - create-only vs `expectedSha256` overwrite with a per-path lock, `O_NOFOLLOW` +
-    `nlink === 1`, atomic `rename`/`link` replacement, directory fsync and real readback;
+    `nlink === 1`, dirfd-relative `linkat`/`renameat` replacement, directory fsync and real
+    readback; the operation is marked uncertain before the first target-changing syscall so a
+    post-apply failure reports `unknown`, never `rejected`;
   - single regular-file soft delete gated on `expectedSha256`, an owner-minted
     single-use confirmation bound to target/path/operation, private trash, restorable
-    receipt and a real restore readback;
+    receipt and a real restore readback; restore takes a durable reservation and moves the
+    file with `linkat`+`unlinkat` on the anchored trash/target descriptors;
   - durable payload-hash-bound operation receipts in SQLite (`node:sqlite`), a
     single-instance lock file, and `unknown` for any reservation that was never
     completed; an unknown operation is never redispatched on another transport/device;
@@ -51,8 +58,12 @@ over stdio:
 - independent target-root readback inside the target fixture proves the mutation really
   hit the target workspace (`created` = `real two-process write`, then `restored` = the same
   bytes);
-- MCP `initialize`/`tools/list` plus real `personal_search`/`personal_read` tool calls
-  returned the same target results.
+- MCP `initialize`/`tools/list` plus 11 real tool calls through the official SDK: search,
+  read, create, `expectedSha256` overwrite, owner-minted-confirmation delete,
+  `personal_operation_status` for each mutation, and a read of the owner-restored file. Every
+  result is checked against the receiver's own disk contents (independent readback), and the
+  script asserts no generated credential or private root appears in any tool result or child
+  log; a mismatch exits non-zero.
 - Identity differentiation on two real fixtures: the identical relative path `same.txt`
   resolved to `target-identity-content` on `target-device/target-workspace` and
   `sender-identity-content` on `sender-device/sender-workspace` (`distinct=true`), so
@@ -89,30 +100,73 @@ scope and are not claimed here.
   `PID80660`, which stayed ready.
 
 Live module-off isolation on the isolated Lab
-(`python3 scripts/personal-lab-module-off-smoke.py`): `health=ok`,
-`webui_version=0.7.31`, discovery `401` unauthenticated and `200` authenticated with
-`extensions=[]`, `personal-agent` absent, and `/api/studio/personal-agent/state` `404`
-while the flag is off. The Lab was then restarted through the exact-owner script (new
-exact-owned PID, health `ok`, production Bridge `80660` still ready) so the PA00 handoff
-condition is restored.
+(`python3 scripts/personal-lab-module-off-smoke.py`, re-run after the containment rework):
+`health=ok`, `webui_version=0.7.31`, discovery `401` unauthenticated and `200` authenticated
+with `extensions=[]`, `personal-agent` absent, and `/api/studio/personal-agent/state` `404`
+while the flag is off. The Lab is currently running as exact-owned PID `36219`, started by
+this worker through `scripts/personal-lab.py` (status verified against the owner record
+before start); production Bridge `80660` stayed `ready` before, during and after. Honest
+fingerprint note: this worker wrote no profile/config/memory, and `~/.hermes/config.yaml` and
+`~/.hermes/memories/MEMORY.md` are byte-identical to the PA00 handoff values. `~/.hermes/SOUL.md`
+does **not** match the earlier PA01-run value (`69f70d95…` → `1feaa6c2…`), but it already held
+the new value when this run's Lab started and is byte-stable across this run's Lab start and
+status checks; the change predates this run and was not made by this worker, so no
+"unchanged throughout" claim is made for it. The Lab's Agent Bridge is `unreachable` by
+design/empty isolate and was not attached to production.
+
+- Receiver containment rework (QA run 2 findings QA-01..QA-05): path resolution and all
+  mutations moved onto a package-internal POSIX N-API adapter
+  (`packages/personal-assistant/native/posix.c` + `src/posix.ts`) that operates on
+  directory file descriptors (`openat`/`fstatat`/`linkat`/`renameat`/`unlinkat`/`fdopendir`).
+  A real root/parent/leaf symlink swap can no longer redirect a read, stage bytes outside the
+  allowlist, or mutate an outside path, because validation and the operation share the same
+  anchored descriptor instead of an absolute path string. `/dev/fd` subpaths and `chdir`
+  were measured on this host and do not work, and a `realpath` recheck was rejected as it
+  only narrows the TOCTOU window. The adapter is built by
+  `scripts/personal-agent-native.mjs` with the local compiler and installed Node N-API
+  headers; it contains no shell, adds no dependency, and a missing or unloadable adapter
+  fails closed (`PLATFORM_UNVERIFIED`, 503) before any private state is created.
+- Post-apply transaction semantics fixed: the operation is marked uncertain before the first
+  target-changing syscall, a failing receipt write can no longer re-label a committed
+  mutation as `rejected`, and restore takes a durable `restored=2` reservation so a crash or
+  cleanup failure reports `unknown` and is never retried (previously an injected EIO on
+  cleanup reported `rejected` while the file was committed).
+- Default bounded read of long multi-byte UTF-8 text now backs off to a complete code-point
+  boundary and reports real `byteLength`/full-file hash/`truncated`; an explicit misaligned
+  range or offset still fails (`INVALID_RANGE`).
+- Restore OpenAPI 200 now declares the actual full `PersonalResponse` envelope, verified by an
+  executable route/schema consistency test rather than a source comparison.
+- Native identity comparison uses exact 64-bit `dev`/`ino` (BigInt) rather than a lossy double;
+  the pre-existing private installation receipt stays byte-identical because a binding whose
+  device/inode does not round-trip through a JSON-safe integer fails closed at configuration.
+- `tests/personal-assistant/safety-regressions.test.ts` adds 22 real-syscall regressions run
+  against the rebuilt `dist` artifact — root/parent/leaf swaps scheduled at the actual
+  `openat`/`linkat`/`renameat` boundary, persistent-swap staging containment, post-apply
+  unknown across restart for fsync/readback/receipt failure, native-absent fail-closed, and
+  64-bit inode identity. No mocked filesystem.
 
 ## Publication
 
 - Branch `feat/personal-assistant-files` pushed to the verified fork origin
   (`https://github.com/over01470914/ekko-studio.git`).
-- Remote readback SHA: `7720580ab45effde6828c18df07b5c1399e23436` (matches local `HEAD`).
+- Remote readback SHA: `FINAL_SHA_PLACEHOLDER` (matches local `HEAD`). The pre-rework
+  implementation SHA `16cd76d91c775a88c7ae2a7e8e2f0fb6f69dc0bc` is the review HEAD that
+  QA rejected; `7720580ab45effde6828c18df07b5c1399e23436` was the earlier PA01 receipt SHA and
+  is superseded by both.
 - No PR, release, tag, npm publish or production cutover was performed.
 - Retained two-node acceptance artifacts:
-  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-lJRK34`
-  (`acceptance-evidence.json` contains no credential; the mode-0600 peer configs hold
-  generated fixture tokens only).
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-zuUa8N`
+  (official-SDK rework run; `acceptance-evidence.json` contains no credential; the mode-0600
+  peer configs hold generated fixture tokens only). The earlier PA01 run artifacts remain at
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-lJRK34`.
 
 ## Verification commands (results in the card metadata)
 
 ```
+node scripts/personal-agent-build.mjs
 node node_modules/vitest/vitest.mjs run tests/personal-assistant/engine.test.ts \
-  tests/personal-assistant/transport.test.ts tests/server/personal-agent-module.test.ts \
-  tests/server/personal-agent-contract.test.ts --no-file-parallelism
+  tests/personal-assistant/transport.test.ts tests/personal-assistant/safety-regressions.test.ts \
+  tests/server/personal-agent-module.test.ts tests/server/personal-agent-contract.test.ts --no-file-parallelism
 node node_modules/vitest/vitest.mjs run tests/server/studio-extension-registry.test.ts \
   tests/server/studio-extension-openapi.test.ts tests/server/studio-extension-boundary.test.ts
 npm run openapi:generate

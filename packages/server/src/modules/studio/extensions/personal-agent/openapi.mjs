@@ -28,7 +28,7 @@ export function extendPersonalAgentOpenApi(openapi) {
     '/delete-confirmations': { post: ['confirmPersonalAgentDelete', 'Active verified Studio account only. The receiver owner mints a target/path/operation-bound confirmation; a sender or MCP tool cannot mint its own.',
       body({ $ref: '#/components/schemas/PersonalConfirmationRequest' }), response('Single-use, expiring confirmation bound to the exact file hash and payload', ref('ConfirmationResult'))] },
     '/restore': { post: ['restorePersonalAgentDelete', 'Active verified Studio account owner only; restores one receipted soft delete to containment-checked private trash.',
-      body({ $ref: '#/components/schemas/PersonalRestoreRequest' }), response('Restored file identity with real readback hash', { $ref: '#/components/schemas/PersonalWriteResult' })] },
+      body({ $ref: '#/components/schemas/PersonalRestoreRequest' }), response('Full target-bound restore envelope, readback hash or explicit unknown state', { $ref: '#/components/schemas/PersonalResponse' })] },
   }
   for (const [suffix, methods] of Object.entries(paths)) {
     const path = `/api/studio/personal-agent${suffix}`

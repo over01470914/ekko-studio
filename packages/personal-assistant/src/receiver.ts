@@ -1,9 +1,10 @@
-import { mkdirSync, lstatSync, opendirSync, openSync, closeSync, writeFileSync, fsyncSync, linkSync, unlinkSync, renameSync, constants } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { mkdirSync, closeSync, writeFileSync, fsyncSync, constants } from 'node:fs'
+import { join } from 'node:path'
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { ReceiptStore } from './receipts'
-import { bindRoot, assertRoot, contained, validatePath, resolveFile, readRegular, inspectText, type RootBinding } from './files'
+import { bindRoot, assertRoot, contained, validatePath, anchorFile, anchorDirectory, readAnchored, readRegular, inspectText, type RootBinding } from './files'
+import { posix } from './posix'
 import { PersonalError, sha256, canonical, parseRequest, validateResponse, matchesSchema, protocolSchema, limits, plainJson,
   type Capability, type FileRequest, type FileResponse, type ResultData, type SearchItem } from './protocol'
 
@@ -26,10 +27,6 @@ export function approvedOrigin(value: string): string {
 const validId = (id: unknown) => matchesSchema(id, protocolSchema.$defs.Id)
 const validCaps = (caps: unknown): caps is Capability[] => Array.isArray(caps) && caps.length <= 4 &&
   new Set(caps).size === caps.length && caps.every(cap => matchesSchema(cap, protocolSchema.$defs.Capability))
-const syncDirectory = (path: string) => {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
-  try { fsyncSync(fd) } finally { closeSync(fd) }
-}
 const errorCode = (error: unknown) => error instanceof PersonalError ? error.code :
   (error as NodeJS.ErrnoException)?.code === 'EEXIST' ? 'CONFLICT' : 'IO_FAILURE'
 
@@ -47,6 +44,7 @@ export class PersonalReceiver {
   constructor(config: ReceiverConfig) {
     // Reparse/junction guarantees are not inferred from POSIX O_NOFOLLOW. This pilot fails closed on Windows.
     if (process.platform === 'win32') throw new PersonalError('PLATFORM_UNVERIFIED', 503)
+    posix()
     if (!plainJson(config) || !validId(config.deviceId) || typeof config.hostname !== 'string' || !config.hostname ||
         config.hostname.length > 128 || /[\x00-\x1f]/.test(config.hostname) || !Array.isArray(config.workspaces) ||
         config.workspaces.length > 8 || !Array.isArray(config.approvals) || config.approvals.length > 16) throw new PersonalError('INVALID_CONFIGURATION')
@@ -71,7 +69,10 @@ export class PersonalReceiver {
       mkdirSync(trashRoot, { mode: 0o700, recursive: true })
       this.trashBinding = bindRoot(trashRoot)
       const installation = canonical({ deviceId: config.deviceId, hostname: config.hostname,
-        workspaces: [...this.workspaces.values()].map(({ id, ownerId, label, binding }) => ({ id, ownerId, label, binding })) })
+        // Preserve the existing private installation receipt exactly; runtime
+        // comparisons use bigint and bindRoot rejects unsafe JSON-number IDs.
+        workspaces: [...this.workspaces.values()].map(({ id, ownerId, label, binding }) => ({ id, ownerId, label,
+          binding: { root: binding.root, dev: Number(binding.dev), ino: Number(binding.ino) } })) })
       const previous = this.store.db.prepare('SELECT value FROM meta WHERE key=?').get('installation') as { value: string } | undefined
       if (previous && previous.value !== installation) throw new PersonalError('INSTALLATION_MISMATCH', 409)
       if (!previous) this.store.db.prepare('INSERT INTO meta VALUES (?,?)').run('installation', installation)
@@ -205,7 +206,13 @@ export class PersonalReceiver {
       else if (request.action === 'read') {
         const file = readRegular(workspace.binding, request.path)
         const offset = request.offset ?? 0
-        const bytes = file.bytes.subarray(offset, offset + (request.length ?? limits.maxReadBytes))
+        let end = Math.min(file.bytes.length, offset + (request.length ?? limits.maxReadBytes))
+        // Only an implicit upper bound backs off; an explicit misaligned range
+        // or start offset is an error, never silently shifted.
+        if (request.length === undefined && end < file.bytes.length) {
+          while (end > offset && (file.bytes[end] & 0xc0) === 0x80) end--
+        }
+        const bytes = file.bytes.subarray(offset, end)
         let text: string
         try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { throw new PersonalError('INVALID_RANGE') }
         data = { path: request.path, text, size: file.bytes.length, sha256: file.hash, offset, byteLength: bytes.length,
@@ -214,29 +221,47 @@ export class PersonalReceiver {
         const bytes = Buffer.from(request.content, 'utf8')
         if (bytes.length > limits.maxWriteBytes) throw new PersonalError('LIMIT_EXCEEDED', 413)
         inspectText(bytes)
-        const target = resolveFile(workspace.binding, request.path, request.mode === 'create')
-        if (request.mode === 'overwrite') {
-          if (readRegular(workspace.binding, request.path).hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
-        } else {
-          try { lstatSync(target); throw new PersonalError('CONFLICT', 409) }
-          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-        }
-        const temp = join(dirname(target), `.pa-${randomUUID()}`)
-        const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
-        try { writeFileSync(fd, bytes); fsyncSync(fd) } finally { closeSync(fd) }
+        const { directory, name } = anchorFile(workspace.binding, request.path)
+        const native = posix()
+        const temp = `.pa-${randomUUID()}`
+        let staged = false
         try {
+          const checkTarget = () => {
+            directory.assertCurrent()
+            if (request.mode === 'overwrite') {
+              if (readAnchored(directory, name).hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
+            } else {
+              try { native.statAt(directory.fd, name); throw new PersonalError('CONFLICT', 409) }
+              catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+            }
+          }
+          checkTarget()
+          const fd = native.openAt(directory.fd, temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL)
+          staged = true
+          try { directory.assertCurrent(); writeFileSync(fd, bytes); fsyncSync(fd) } finally { closeSync(fd) }
           this.authorize(peer, request)
-          resolveFile(workspace.binding, request.path, request.mode === 'create')
-          if (request.mode === 'overwrite') {
-            if (readRegular(workspace.binding, request.path).hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
-            renameSync(temp, target)
-          } else { linkSync(temp, target); unlinkSync(temp) }
+          checkTarget()
+          // Crossing the first target-changing primitive is conservatively
+          // uncertain even if a hook/IO failure prevents its return.
           applied = true
-          syncDirectory(dirname(target))
-          const readback = readRegular(workspace.binding, request.path)
+          if (request.mode === 'overwrite') {
+            native.renameAt(directory.fd, temp, directory.fd, name)
+            staged = false
+          } else {
+            try { native.linkAt(directory.fd, temp, directory.fd, name) }
+            catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') applied = false; throw error }
+            native.unlinkAt(directory.fd, temp); staged = false
+          }
+          fsyncSync(directory.fd)
+          const readback = readAnchored(directory, name)
           if (readback.hash !== sha256(bytes)) throw new PersonalError('FILE_CHANGED', 409)
           data = { path: request.path, size: readback.bytes.length, sha256: readback.hash, workspaceRevision: this.bump(workspace.id) }
-        } finally { try { unlinkSync(temp) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error } }
+        } finally {
+          try {
+            if (staged) try { native.unlinkAt(directory.fd, temp) }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+          } finally { directory.close() }
+        }
       } else {
         const file = readRegular(workspace.binding, request.path)
         if (file.hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
@@ -245,15 +270,25 @@ export class PersonalReceiver {
             confirmation.binding !== this.confirmationBinding(peer.ownerId, peer.sourceDeviceId, request)) throw new PersonalError('CONFIRMATION_REQUIRED', 403)
         const receiptId = randomUUID()
         this.authorize(peer, request)
-        const target = resolveFile(workspace.binding, request.path)
-        if (readRegular(workspace.binding, request.path).hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
-        // Journal recovery cannot prove the filesystem/SQLite pair atomic. A crash between these boundaries stays UNKNOWN.
-        this.store.db.prepare('INSERT INTO trash VALUES (?,?,?,?,?,?,0)').run(receiptId, peer.ownerId, workspace.id, request.path, file.hash, request.operationId)
-        renameSync(target, join(this.trashBinding.root, receiptId))
-        applied = true
-        syncDirectory(dirname(target)); syncDirectory(this.trashBinding.root)
-        this.store.db.prepare('UPDATE confirmations SET consumed=1 WHERE id=?').run(request.confirmationId)
-        data = { path: request.path, sha256: file.hash, deleted: true, restorable: true, receiptId, workspaceRevision: this.bump(workspace.id) }
+        const { directory, name } = anchorFile(workspace.binding, request.path)
+        try {
+          const trash = anchorDirectory(this.trashBinding)
+          try {
+            const before = readAnchored(directory, name)
+            if (before.hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
+            // Journal recovery cannot prove the filesystem/SQLite pair atomic.
+            this.store.db.prepare('INSERT INTO trash VALUES (?,?,?,?,?,?,0)').run(receiptId, peer.ownerId, workspace.id, request.path, file.hash, request.operationId)
+            directory.assertCurrent(); trash.assertCurrent()
+            applied = true
+            posix().renameAt(directory.fd, name, trash.fd, receiptId)
+            fsyncSync(directory.fd); fsyncSync(trash.fd)
+            const moved = readAnchored(trash, receiptId)
+            if (moved.hash !== before.hash || moved.stat.dev !== before.stat.dev || moved.stat.ino !== before.stat.ino) throw new PersonalError('FILE_CHANGED', 409)
+            directory.assertCurrent()
+            this.store.db.prepare('UPDATE confirmations SET consumed=1 WHERE id=?').run(request.confirmationId)
+            data = { path: request.path, sha256: file.hash, deleted: true, restorable: true, receiptId, workspaceRevision: this.bump(workspace.id) }
+          } finally { trash.close() }
+        } finally { directory.close() }
       }
       this.authorize(peer, request)
       const response = this.response(request, data)
@@ -261,7 +296,9 @@ export class PersonalReceiver {
       return response
     } catch (error) {
       const code = errorCode(error)
-      this.store.db.prepare('UPDATE operations SET state=?,code=? WHERE id=?').run(applied ? 'unknown' : 'rejected', code, key)
+      // If the receipt write also fails, the durable pending reservation itself
+      // resolves to unknown. Never mask an applied mutation with an IO rejection.
+      try { this.store.db.prepare('UPDATE operations SET state=?,code=? WHERE id=?').run(applied ? 'unknown' : 'rejected', code, key) } catch {}
       if (applied) return this.response(request, { state: 'unknown' }, 'unknown')
       throw new PersonalError(code, error instanceof PersonalError ? error.status : 409)
     } finally { if (pathKey) this.locks.delete(pathKey) }
@@ -291,19 +328,48 @@ export class PersonalReceiver {
   restore(ownerId: string, receiptId: string): FileResponse {
     if (!matchesSchema(receiptId, protocolSchema.$defs.OperationId)) throw new PersonalError('INVALID_REQUEST')
     const receipt = this.store.db.prepare('SELECT * FROM trash WHERE id=?').get(receiptId) as { owner: string; workspace: string; path: string; hash: string; operation_id: string; restored: number } | undefined
-    if (!receipt || receipt.owner !== ownerId || receipt.restored) throw new PersonalError('FORBIDDEN', 403)
+    if (!receipt || receipt.owner !== ownerId || receipt.restored === 1) throw new PersonalError('FORBIDDEN', 403)
     const workspace = this.workspaces.get(receipt.workspace)!
+    const envelope = { version: 1, operationId: receipt.operation_id, target: { deviceId: this.deviceId, hostname: this.hostname, workspaceId: workspace.id }, action: 'restore' }
+    const unknown = () => validateResponse({ ...envelope, outcome: 'unknown', data: { state: 'unknown' } })
+    // restored=2 is a durable restore reservation/unknown, not permission to
+    // retry. This reuses the existing private receipt field, not a wire change.
+    if (receipt.restored === 2) return unknown()
     assertRoot(this.stateBinding); assertRoot(this.trashBinding)
-    const target = resolveFile(workspace.binding, receipt.path, true)
-    const source = readRegular(this.trashBinding, receiptId)
-    if (source.hash !== receipt.hash) throw new PersonalError('FILE_CHANGED', 409)
-    try { linkSync(join(this.trashBinding.root, receiptId), target) }
-    catch (error) { throw new PersonalError((error as NodeJS.ErrnoException).code === 'EEXIST' ? 'CONFLICT' : 'IO_FAILURE', 409) }
-    unlinkSync(join(this.trashBinding.root, receiptId)); syncDirectory(dirname(target)); syncDirectory(this.trashBinding.root)
-    const readback = readRegular(workspace.binding, receipt.path)
-    this.store.db.prepare('UPDATE trash SET restored=1 WHERE id=?').run(receiptId)
-    return validateResponse({ version: 1, operationId: receipt.operation_id, target: { deviceId: this.deviceId, hostname: this.hostname, workspaceId: workspace.id },
-      action: 'restore', outcome: 'completed', data: { path: receipt.path, size: readback.bytes.length, sha256: readback.hash, workspaceRevision: this.bump(workspace.id) } })
+    const pathKey = `${workspace.id}/${receipt.path}`
+    if (this.locks.has(pathKey)) throw new PersonalError('CONFLICT', 409)
+    this.locks.add(pathKey)
+    let applied = false
+    try {
+      const { directory, name } = anchorFile(workspace.binding, receipt.path)
+      try {
+        const trash = anchorDirectory(this.trashBinding)
+        try {
+          const source = readAnchored(trash, receiptId)
+          if (source.hash !== receipt.hash) throw new PersonalError('FILE_CHANGED', 409)
+          directory.assertCurrent(); trash.assertCurrent()
+          this.store.db.prepare('UPDATE trash SET restored=2 WHERE id=?').run(receiptId)
+          applied = true
+          try { posix().linkAt(trash.fd, receiptId, directory.fd, name) }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+              applied = false; this.store.db.prepare('UPDATE trash SET restored=0 WHERE id=?').run(receiptId)
+            }
+            throw error
+          }
+          posix().unlinkAt(trash.fd, receiptId)
+          fsyncSync(directory.fd); fsyncSync(trash.fd)
+          const readback = readAnchored(directory, name)
+          if (readback.hash !== receipt.hash || readback.stat.dev !== source.stat.dev || readback.stat.ino !== source.stat.ino) throw new PersonalError('FILE_CHANGED', 409)
+          const result = validateResponse({ ...envelope, outcome: 'completed', data: { path: receipt.path, size: readback.bytes.length, sha256: readback.hash, workspaceRevision: this.bump(workspace.id) } })
+          this.store.db.prepare('UPDATE trash SET restored=1 WHERE id=?').run(receiptId)
+          return result
+        } finally { trash.close() }
+      } finally { directory.close() }
+    } catch (error) {
+      if (applied) return unknown()
+      throw new PersonalError(errorCode(error), error instanceof PersonalError ? error.status : 409)
+    } finally { this.locks.delete(pathKey) }
   }
   private search(workspace: Workspace, request: Extract<FileRequest, { action: 'search' }>): ResultData {
     const start = performance.now()
@@ -323,41 +389,42 @@ export class PersonalReceiver {
         offset = cursor.offset
       } catch { throw new PersonalError('CURSOR_INVALID', 409) }
     }
-    const visit = (directory: string, depth: number): void => {
+    const visit = (path: string, depth: number): void => {
       if (scannedEntries >= limits.maxEntries || performance.now() - start > limits.maxScanMs) { truncated = true; return }
-      // opendir avoids an unbounded readdir allocation for a directory with millions of entries.
-      const entries = opendirSync(directory, { bufferSize: 16 })
+      const directory = anchorDirectory(workspace.binding, path)
       try {
-      for (let entry = entries.readSync(); entry; entry = entries.readSync()) {
+      const entries = posix().entries(directory.fd, limits.maxEntries - scannedEntries)
+      if (entries.hasMore) truncated = true
+      directory.assertCurrent()
+      for (const name of entries.names) {
         if (scannedEntries >= limits.maxEntries || performance.now() - start > limits.maxScanMs) { truncated = true; return }
         scannedEntries++
-        const path = directory === workspace.binding.root ? entry.name : `${directory.slice(workspace.binding.root.length + 1)}/${entry.name}`
-        try { validatePath(path) } catch { continue }
-        if (entry.isSymbolicLink()) continue
-        if (entry.isDirectory()) {
+        const childPath = path ? `${path}/${name}` : name
+        try { validatePath(childPath) } catch { continue }
+        let stat
+        try { stat = posix().statAt(directory.fd, name) } catch { continue }
+        if (stat.symlink) continue
+        if (stat.directory) {
           if (depth >= limits.maxDepth) { truncated = true; continue }
-          assertRoot(workspace.binding)
-          const nested = join(directory, entry.name)
-          if (lstatSync(nested).isSymbolicLink()) continue
-          visit(nested, depth + 1)
-        } else if (entry.isFile()) {
+          directory.assertCurrent()
+          visit(childPath, depth + 1)
+        } else if (stat.file) {
           try {
-            const stat = lstatSync(join(directory, entry.name))
             if (stat.size > limits.maxFileBytes) { truncated = true; continue }
             if (scannedBytes + stat.size > limits.maxScanBytes) { truncated = true; return }
             scannedBytes += stat.size
-            const file = readRegular(workspace.binding, path)
-            const filename = request.mode !== 'content' && entry.name.toLocaleLowerCase('en-US').includes(query)
+            const file = readRegular(workspace.binding, childPath)
+            const filename = request.mode !== 'content' && name.toLocaleLowerCase('en-US').includes(query)
             const content = request.mode !== 'filename' && file.text.toLocaleLowerCase('en-US').includes(query)
-            if (filename || content) matches.push({ path, size: file.bytes.length, sha256: file.hash, match: filename && content ? 'both' : filename ? 'filename' : 'content' })
+            if (filename || content) matches.push({ path: childPath, size: file.bytes.length, sha256: file.hash, match: filename && content ? 'both' : filename ? 'filename' : 'content' })
           } catch (error) {
             if (!(error instanceof PersonalError) || !['SENSITIVE_FILE', 'UNSUPPORTED_FILE', 'UNSAFE_PATH', 'NOT_FOUND', 'LIMIT_EXCEEDED', 'FILE_CHANGED'].includes(error.code)) throw error
           }
         }
       }
-      } finally { entries.closeSync() }
+      } finally { directory.close() }
     }
-    visit(workspace.binding.root, 0)
+    visit('', 0)
     matches.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
     const items = matches.slice(offset, offset + request.limit)
     const hasMore = offset + items.length < matches.length

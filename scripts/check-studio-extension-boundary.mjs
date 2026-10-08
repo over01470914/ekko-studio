@@ -26,6 +26,7 @@ const shared = new Set([
   'scripts/personal-lab.py', 'scripts/personal-lab-seed.ts',
   'scripts/validate-personal-agent-catalog.py',
   'scripts/personal-agent-build.mjs', 'scripts/personal-agent-acceptance.mjs',
+  'scripts/personal-agent-native.mjs',
   'scripts/personal-agent-fd-probe.mjs',
   'scripts/personal-lab-module-off-smoke.py',
 ])

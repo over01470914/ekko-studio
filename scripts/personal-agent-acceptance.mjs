@@ -6,7 +6,8 @@ import { createServer, request as httpRequest } from 'node:http'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID, createHash } from 'node:crypto'
+import assert from 'node:assert/strict'
 import { Client } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 
@@ -14,9 +15,10 @@ const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 // Fixture state lives in the OS scratch dir so it can never become a repo change.
 const stateRoot = mkdtempSync(join(process.env.TMPDIR || tmpdir(), 'pa-accept-'))
 const children = []
+let mcpClient
 const evidence = { startedAt: new Date().toISOString(), platform: process.platform, claims: 'same-machine loopback protocol acceptance only; no physical Windows or remote device',
   steps: [], targetReadback: {}, artifacts: { stateRoot } }
-const sha256 = value => require('node:crypto').createHash('sha256').update(value).digest('hex')
+const sha256 = value => createHash('sha256').update(value).digest('hex')
 function freePort() { return new Promise(resolve => { const probe = createServer(); probe.listen(0, '127.0.0.1', () => { const port = probe.address().port; probe.close(() => resolve(port)) }) }) }
 function rpc(port, payload, credential) {
   return new Promise((resolve, reject) => {
@@ -62,12 +64,16 @@ async function main() {
     distinctProcesses: target.child.pid !== sender.child.pid, distinctState: join(stateRoot, 'target'), isolatedRoots: { targetFiles, senderFiles } })
   const operation = (action, extra) => ({ version: 1, operationId: randomUUID(), deviceId: 'target-device', workspaceId: 'target-workspace', grantRevision: 1, action, ...extra })
   const search = await rpc(targetPort, operation('search', { query: 'granite', mode: 'content', limit: 5 }), targetToken)
+  assert.equal(search.status, 200); assert.equal(search.body.data.items[0].path, 'report.txt')
   evidence.steps.push({ step: 'search', match: search.body?.data?.items?.[0], status: search.status })
   const read = await rpc(targetPort, operation('read', { path: 'report.txt' }), targetToken)
+  assert.equal(read.status, 200); assert.equal(read.body.data.text, 'granite 內容 alpha'); assert.equal(read.body.data.sha256, sha256('granite 內容 alpha'))
   evidence.steps.push({ step: 'read', text: read.body?.data?.text, sha256: read.body?.data?.sha256, status: read.status })
   const write = await rpc(targetPort, operation('write', { path: 'created.txt', mode: 'create', content: 'real two-process write' }), targetToken)
+  assert.equal(write.status, 200); assert.equal(write.body.outcome, 'completed'); assert.equal(write.body.data.sha256, sha256('real two-process write'))
   evidence.steps.push({ step: 'write', sha256: write.body?.data?.sha256, status: write.status })
   evidence.targetReadback.created = readFileSync(join(targetFiles, 'created.txt'), 'utf8')
+  assert.equal(evidence.targetReadback.created, 'real two-process write')
   const deleteRequest = operation('delete', { path: 'created.txt', expectedSha256: write.body?.data?.sha256 })
   const confirmation = await new Promise((resolve, reject) => {
     const listener = message => { if (message?.event === 'reply' && message.id === 'confirm') { target.child.off('message', listener); message.error ? reject(new Error(message.error)) : resolve(message.result) } }
@@ -75,6 +81,7 @@ async function main() {
     target.child.send({ id: 'confirm', action: 'confirm-delete', sourceDeviceId: 'sender-device', request: deleteRequest })
   })
   const deleted = await rpc(targetPort, { ...deleteRequest, confirmationId: confirmation.confirmationId }, targetToken)
+  assert.equal(deleted.status, 200); assert.equal(deleted.body.outcome, 'completed'); assert.equal(existsSync(join(targetFiles, 'created.txt')), false)
   evidence.steps.push({ step: 'delete', data: deleted.body?.data, status: deleted.status, targetPresent: existsSync(join(targetFiles, 'created.txt')) })
   // Direct writeback inside the target fixture proves the delete really mutated the target root.
   const restore = await new Promise((resolve, reject) => {
@@ -84,8 +91,11 @@ async function main() {
   })
   evidence.steps.push({ step: 'restore', status: restore.body?.outcome, restored: readFileSync(join(targetFiles, 'created.txt'), 'utf8') })
   evidence.targetReadback.restored = readFileSync(join(targetFiles, 'created.txt'), 'utf8')
+  assert.equal(restore.body.outcome, 'completed'); assert.equal(restore.body.data.sha256, sha256('real two-process write'))
+  assert.equal(evidence.targetReadback.restored, evidence.targetReadback.created)
   // Real official MCP client over stdio against the same two-node state.
   const client = new Client({ name: 'pa-acceptance-client', version: '0.1.0' })
+  mcpClient = client
   const transport = new StdioClientTransport({ command: process.execPath, args: [join(rootDir, 'dist/personal-assistant/mcp.js'), join(stateRoot, 'mcp.json')],
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
   const mcpConfig = { version: 1, ownerId: '1', peers: [{ origin: sender.origin, deviceId: 'sender-device', workspaceId: 'sender-workspace', ownerId: '1',
@@ -95,16 +105,67 @@ async function main() {
   writeFileSync(join(stateRoot, 'mcp.json'), JSON.stringify(mcpConfig), { mode: 0o600 }); chmodSync(join(stateRoot, 'mcp.json'), 0o600)
   await client.connect(transport)
   const tools = await client.listTools()
-  const mcpSearch = await client.callTool({ name: 'personal_search', arguments: operation('search', { query: 'granite', mode: 'content', limit: 5 }) })
-  const mcpRead = await client.callTool({ name: 'personal_read', arguments: operation('read', { path: 'report.txt' }) })
+  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ['personal_search', 'personal_read', 'personal_write', 'personal_delete', 'personal_operation_status'].sort())
+  let toolCalls = 0
+  const callTool = async (name, args) => {
+    toolCalls++
+    const result = await client.callTool({ name, arguments: args })
+    assert.notEqual(result.isError, true, `MCP ${name} failed`)
+    const response = result.structuredContent
+    assert.equal(response?.outcome, 'completed')
+    assert.equal(response.target.deviceId, args.deviceId); assert.equal(response.target.workspaceId, args.workspaceId)
+    for (const forbidden of [targetToken, senderToken, targetFiles, senderFiles]) assert.equal(JSON.stringify(result).includes(forbidden), false)
+    return response
+  }
+  const mcpSearch = await callTool('personal_search', operation('search', { query: 'granite', mode: 'content', limit: 5 }))
+  assert.equal(mcpSearch.data.items[0].path, 'report.txt')
+  const mcpRead = await callTool('personal_read', operation('read', { path: 'report.txt' }))
+  assert.equal(mcpRead.data.text, 'granite 內容 alpha'); assert.equal(mcpRead.data.sha256, sha256('granite 內容 alpha'))
+  const createArgs = operation('write', { path: 'mcp-created.txt', mode: 'create', content: 'official MCP create bytes' })
+  const mcpCreate = await callTool('personal_write', createArgs)
+  assert.equal(readFileSync(join(targetFiles, 'mcp-created.txt'), 'utf8'), createArgs.content)
+  assert.equal(mcpCreate.data.sha256, sha256(createArgs.content))
+  const overwriteArgs = operation('write', { path: 'mcp-created.txt', mode: 'overwrite', expectedSha256: mcpCreate.data.sha256, content: 'official MCP overwrite bytes' })
+  const mcpOverwrite = await callTool('personal_write', overwriteArgs)
+  assert.equal(readFileSync(join(targetFiles, 'mcp-created.txt'), 'utf8'), overwriteArgs.content)
+  assert.equal(mcpOverwrite.data.sha256, sha256(overwriteArgs.content))
+  const deleteArgs = operation('delete', { path: 'mcp-created.txt', expectedSha256: mcpOverwrite.data.sha256 })
+  // Approval remains exclusively on the launching receiver owner's IPC channel.
+  const ownerControl = payload => new Promise((resolve, reject) => {
+    const id = randomUUID()
+    const timer = setTimeout(() => { target.child.off('message', listener); reject(new Error('owner control timeout')) }, 10000)
+    const listener = message => {
+      if (message?.event !== 'reply' || message.id !== id) return
+      clearTimeout(timer); target.child.off('message', listener)
+      message.error ? reject(new Error(message.error)) : resolve(message.result)
+    }
+    target.child.on('message', listener); target.child.send({ id, ...payload })
+  })
+  const mcpConfirmation = await ownerControl({ action: 'confirm-delete', sourceDeviceId: 'sender-device', request: deleteArgs })
+  const mcpDelete = await callTool('personal_delete', { ...deleteArgs, confirmationId: mcpConfirmation.confirmationId })
+  assert.equal(existsSync(join(targetFiles, 'mcp-created.txt')), false)
+  const statuses = []
+  for (const op of [createArgs, overwriteArgs, deleteArgs]) {
+    const status = await callTool('personal_operation_status', { ...operation('status'), operationId: op.operationId })
+    assert.equal(status.data.state, 'completed'); statuses.push(status)
+  }
+  const mcpRestore = await ownerControl({ action: 'restore', receiptId: mcpDelete.data.receiptId })
+  assert.equal(mcpRestore.outcome, 'completed'); assert.equal(mcpRestore.data.sha256, mcpOverwrite.data.sha256)
+  const mcpRestoredRead = await callTool('personal_read', operation('read', { path: 'mcp-created.txt' }))
+  assert.equal(mcpRestoredRead.data.text, overwriteArgs.content); assert.equal(mcpRestoredRead.data.sha256, mcpOverwrite.data.sha256)
+  const independentReadback = readFileSync(join(targetFiles, 'mcp-created.txt'), 'utf8')
+  assert.equal(independentReadback, overwriteArgs.content); assert.equal(existsSync(join(senderFiles, 'mcp-created.txt')), false)
   // Identical relative path on two real fixtures must resolve by verified identity, never by name or path.
-  const targetSame = await client.callTool({ name: 'personal_read', arguments: operation('read', { path: 'same.txt' }) })
-  const senderSame = await client.callTool({ name: 'personal_read', arguments: { version: 1, operationId: randomUUID(), deviceId: 'sender-device',
-    workspaceId: 'sender-workspace', grantRevision: 1, action: 'read', path: 'same.txt' } })
-  evidence.mcp = { tools: tools.tools.map(tool => tool.name), searchItem: mcpSearch.structuredContent?.data?.items?.[0], readText: mcpRead.structuredContent?.data?.text }
-  evidence.identityDifferentiation = { targetDeviceSamePath: targetSame.structuredContent?.data?.text ?? targetSame.content?.[0]?.text,
-    senderDeviceSamePath: senderSame.structuredContent?.data?.text ?? senderSame.content?.[0]?.text,
-    distinct: targetSame.structuredContent?.data?.sha256 !== senderSame.structuredContent?.data?.sha256 }
+  const targetSame = await callTool('personal_read', operation('read', { path: 'same.txt' }))
+  const senderSame = await callTool('personal_read', { version: 1, operationId: randomUUID(), deviceId: 'sender-device',
+    workspaceId: 'sender-workspace', grantRevision: 1, action: 'read', path: 'same.txt' })
+  evidence.mcp = { tools: tools.tools.map(tool => tool.name), toolCalls, search: mcpSearch, read: mcpRead,
+    create: mcpCreate, overwrite: mcpOverwrite, delete: mcpDelete, statuses, restore: mcpRestore, restoredRead: mcpRestoredRead,
+    independentTargetReadback: independentReadback, senderUntouched: !existsSync(join(senderFiles, 'mcp-created.txt')) }
+  assert.equal(targetSame.data.text, 'target-identity-content'); assert.equal(senderSame.data.text, 'sender-identity-content')
+  evidence.identityDifferentiation = { targetDeviceSamePath: targetSame.data.text,
+    senderDeviceSamePath: senderSame.data.text, distinct: targetSame.data.sha256 !== senderSame.data.sha256 }
+  assert.equal(evidence.identityDifferentiation.distinct, true)
   await client.close()
   const serialized = JSON.stringify(evidence)
   for (const secret of [targetToken, senderToken]) if (serialized.includes(secret)) throw new Error('credential leaked into evidence')
@@ -113,6 +174,6 @@ async function main() {
   console.log(JSON.stringify(evidence, null, 2))
 }
 main().catch(error => { console.error('ACCEPTANCE_FAILED', error); process.exitCode = 1 })
-  .finally(() => { for (const child of children) { try { child.send?.({ action: 'stop' }); child.kill('SIGTERM') } catch {} }
+  .finally(async () => { await mcpClient?.close(); for (const child of children) { try { child.kill('SIGTERM') } catch {} }
     setTimeout(() => { for (const child of children) try { child.kill('SIGKILL') } catch {}
       if (process.env.PA_KEEP_STATE !== '1') rmSync(stateRoot, { recursive: true, force: true }) }, 500).unref() })

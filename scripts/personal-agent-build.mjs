@@ -3,11 +3,14 @@ import * as esbuild from 'esbuild'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { chmodSync, mkdirSync, rmSync, copyFileSync } from 'fs'
+import { buildPersonalNative } from './personal-agent-native.mjs'
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = resolve(rootDir, 'dist/personal-assistant')
 rmSync(outDir, { recursive: true, force: true })
 mkdirSync(outDir, { recursive: true })
+const nativeDir = resolve(rootDir, 'packages/personal-assistant/dist')
+if (buildPersonalNative(nativeDir)) copyFileSync(resolve(nativeDir, 'personal-fs.node'), resolve(outDir, 'personal-fs.node'))
 await esbuild.build({
   entryPoints: {
     index: resolve(rootDir, 'packages/personal-assistant/src/index.ts'),

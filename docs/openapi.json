@@ -18882,11 +18882,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Restored file identity with real readback hash",
+            "description": "Full target-bound restore envelope, readback hash or explicit unknown state",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PersonalWriteResult"
+                  "$ref": "#/components/schemas/PersonalResponse"
                 }
               }
             }

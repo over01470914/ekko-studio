@@ -10,6 +10,10 @@ const serverOutDir = resolve(rootDir, 'dist/server')
 
 rmSync(serverOutDir, { recursive: true, force: true })
 mkdirSync(serverOutDir, { recursive: true })
+// Optional Personal receiver seam. Normal/off Studio builds need no compiler;
+// the separately built, local-platform N-API adapter is copied when present.
+const personalNative = resolve(rootDir, 'packages/personal-assistant/dist/personal-fs.node')
+if (existsSync(personalNative)) cpSync(personalNative, resolve(serverOutDir, 'personal-fs.node'))
 
 await esbuild.build({
   entryPoints: [resolve(rootDir, 'packages/server/src/index.ts')],
