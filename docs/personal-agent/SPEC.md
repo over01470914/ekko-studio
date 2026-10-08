@@ -46,6 +46,37 @@ Deny traversal/absolute paths/UNC/ADS, sensitive files, symlink/reparse escapes 
 
 ## Central Naya mode
 
+### Amendment r7 (supersedes r6/r5 wherever isolated client state was read as "configure another Hermes Agent")
+
+Boss correction, adopted into this contract: every personal-mode Studio instance is only a
+communication gateway/client for the **same existing** Naya runtime/profile/memory/task
+system on the Mac mini. Personal mode must not require a model provider, API key, SOUL,
+memory provider, second Hermes profile or any local Hermes Agent, and the local
+`configure model` prompt is not personal-mode onboarding — that belongs to an explicitly
+chosen existing workbench/local-agent mode only.
+
+- Gateway-local state stays local and isolated: instance identity, origin-scoped
+  connection credential handles, UI preference/cache, logs, workspace/device grants and
+  file-operation receipts. That is not a second assistant, session or memory authority.
+- File nodes are tool-execution endpoints only: they execute receiver-authorized bounded
+  search/read/write/delete with no inference loop and no Agent config.
+- Closing/restarting a personal gateway must not start, attach as owner, stop, recover,
+  configure or restart the central Agent/Bridge/Gateway, and must never mount production
+  config/state.db or share the raw Bridge endpoint. A gateway shutdown cannot end central
+  runtime or cancel central work.
+- Central model/memory/SOUL/tool ownership is inherited through the central runtime, not
+  copied into client homes. Origin-bound auth still applies; a local instance JWT is never
+  forwarded to a different origin.
+- PA00's dummy unconfigured-model lab home was **defensive full-bootstrap compatibility**,
+  not the final design and not a working second Naya. PA02 must deliver client-only
+  personal-mode startup (no local model, no automatic Bridge/Agent management, no
+  configured lab profile) while normal upstream workbench behavior stays default.
+- PA01's pure file core/receiver/MCP is orthogonal and unchanged by r7; root tool
+  execution remains bounded receiver authorization, not another local agent.
+
+Source of record: `~/.hermes/plans/2026-10-08-personal-gateway-architecture-amendment-r7.md`.
+Where r6 and r7 conflict about configuring/starting a local Agent, r7 wins.
+
 New mode is presentation/transport, not runtime scoped/global or another local Agent writer. Desktop local trusted renderer/server stays local. Dedicated server-side central connection adapter uses public authenticated session/run/events APIs. No /api/studio/sessions/* or chat-run internal delegation. User-requested central product flow may create/select a dedicated verified test session, but must not alter/delete this current session or existing production work. Prevent fixture prompts entering durable memory where supported; label anything not controllable.
 
 Origin-scoped auth; no forwarding existing local JWT to central origin. Credential entry through masked/vault/approved UI mechanism only, never ask the owner to paste secrets in chat. Normal new UI can be unconfigured/empty; central inference is not forged. Mode switch/close does not cancel or repeat central mutations/tasks. Missing central auth/connectivity is truthful unavailable state, not silent Mac fallback.

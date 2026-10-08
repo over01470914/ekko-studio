@@ -2,6 +2,7 @@
 
 ## PA01 / engine 0.1.0 / module 0.1.0 / protocol v1 — 2026-10-08
 
+- Reconciled architecture amendment r7 into `SPEC.md`: personal mode is a gateway/client for the same existing central Naya, requires no local model/provider/profile setup, cannot manage the central runtime, and PA00's dummy lab config is defensive compatibility only. PA01's receiver/MCP scope is unaffected.
 - Added the transport-neutral `packages/personal-assistant/` engine with canonical protocol v1 JSON Schema as the single source of truth.
 - Implemented receiver-owned root allowlist, owner-scoped grants with immediate revoke on open connections, bounded filename+UTF-8 search with signed cursors, bounded read+hash, create-only vs expected-hash atomic overwrite with real readback, and owner-confirmed single-file soft delete with a restorable receipt.
 - Added durable payload-bound operation receipts with unknown-state recovery that never redispatches a mutation on another transport or device.

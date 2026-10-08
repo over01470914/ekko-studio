@@ -53,9 +53,25 @@ over stdio:
   bytes);
 - MCP `initialize`/`tools/list` plus real `personal_search`/`personal_read` tool calls
   returned the same target results.
+- Identity differentiation on two real fixtures: the identical relative path `same.txt`
+  resolved to `target-identity-content` on `target-device/target-workspace` and
+  `sender-identity-content` on `sender-device/sender-workspace` (`distinct=true`), so
+  routing follows verified identity rather than hostname or path.
 
 This is same-machine loopback protocol acceptance. It is **not** a physical Windows,
 separate-host or remote-network check, and it does not assert Windows escape semantics.
+
+## Architecture amendment r7 reconciliation
+
+Boss correction r7 is recorded in the tracked contract (`SPEC.md` → *Central Naya mode →
+Amendment r7*) and catalog: every personal-mode instance is only a gateway/client for the
+same existing central Naya; no local model/provider/profile/memory setup and no local
+Agent/Bridge lifecycle; a gateway close cannot stop central runtime; PA00's dummy lab
+config was defensive full-bootstrap compatibility, not a second assistant. **PA01's pure
+file core, receiver, MCP toolset and bounded receiver-authorized tool execution are
+unchanged and remain valid under r7** — file nodes stay plain execution endpoints with no
+inference loop. Client-only personal-mode startup and central transport are PA02/PA03
+scope and are not claimed here.
 
 ## Explicitly unverified / honest limitations
 

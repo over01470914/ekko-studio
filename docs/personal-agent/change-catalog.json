@@ -63,6 +63,7 @@
         "packages/server/src/modules/studio/extensions/personal-agent/routes.ts",
         "packages/server/src/modules/studio/extensions/personal-agent/openapi.mjs",
         "packages/server/src/bootstrap/studio-extensions.ts",
+        "docs/personal-agent/SPEC.md",
         "scripts/check-studio-extension-boundary.mjs",
         "scripts/personal-agent-build.mjs",
         "scripts/personal-agent-acceptance.mjs",
@@ -81,7 +82,8 @@
       "contracts": [
         "packages/personal-assistant/protocol.schema.json (protocol v1, request/response/status/error DTOs and exact bounds)",
         "docs/openapi.json /api/studio/personal-agent/* with operationId, security and 200/403/404/409 responses",
-        "modules/studio/extensions/registry contractVersion 1; module id personal-agent 0.1.0, registered off by default"
+        "modules/studio/extensions/registry contractVersion 1; module id personal-agent 0.1.0, registered off by default",
+        "docs/personal-agent/SPEC.md amendment r7: personal mode is a gateway/client for the same existing central Naya; no local model/provider/profile or Agent/Bridge lifecycle; r7 supersedes r6/r5 where isolated client state was read as a second agent"
       ],
       "verification": [
         "node node_modules/vitest/vitest.mjs run tests/personal-assistant/engine.test.ts tests/personal-assistant/transport.test.ts tests/server/personal-agent-module.test.ts tests/server/personal-agent-contract.test.ts --no-file-parallelism: 38 passed",
@@ -94,12 +96,14 @@
         "python3 scripts/validate-personal-agent-catalog.py: must pass before commit",
         "scripts/personal-lab.py status/stop: exact-owner stop, port released, production fingerprints unchanged",
         "python3 scripts/personal-lab-module-off-smoke.py: lab healthy 0.7.31, discovery 401 unauthenticated / 200 authenticated, advertised extensions [], personal-agent absent, /api/studio/personal-agent/state 404 when off",
-        "real same-machine two-node acceptance artifacts retained under the developer scratch dir; the evidence json contains no credential"
+        "real same-machine two-node acceptance artifacts retained under the developer scratch dir; the evidence json contains no credential",
+        "node scripts/personal-agent-acceptance.mjs identity differentiation: the same relative path same.txt on two real node fixtures returned target-identity-content vs sender-identity-content, distinct=true, so routing follows verified identity rather than path"
       ],
       "limitations": [
         "Same-machine loopback protocol acceptance only; no physical Windows, second host or remote-network verification",
         "Receiver fails closed on win32; POSIX O_NOFOLLOW is not asserted as Windows escape safety",
         "No UI, installer, central Naya connection or real user file touched; all fixtures are generated scratch",
+        "Amendment r7 is recorded in SPEC/catalog in this slice; implementing client-only personal-mode startup and central transport belongs to PA02/PA03 and is not claimed here",
         "Filesystem/SQLite crash atomicity is not claimed: a crash mid-delete leaves the operation unknown for human inspection",
         "MCP toolset is a scoped pilot config artifact; the default profile MCP configuration is unchanged"
       ]
