@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "changes": [
+    {
+      "id": "PA00",
+      "project": "ekko-personal-agent",
+      "date": "2026-10-08+08:00",
+      "revision": "isolation-harness 1.0.0 / specification r6",
+      "component": "lab lifecycle and development contract; Studio binary remains upstream baseline 0.7.31",
+      "files": [
+        "scripts/personal-lab.py",
+        "scripts/personal-lab-seed.ts",
+        "scripts/validate-personal-agent-catalog.py",
+        "docs/personal-agent/SPEC.md",
+        "docs/personal-agent/ISOLATION-RECEIPT.json",
+        "docs/personal-agent/CHANGELOG.md",
+        "docs/personal-agent/change-catalog.json"
+      ],
+      "contracts": ["docs/personal-agent/SPEC.md r6; public business API unchanged in PA00"],
+      "verification": [
+        "NODE_ENV=development npm ci --ignore-scripts --include=dev --no-audit --no-fund: passed",
+        "npm rebuild node-pty esbuild: passed",
+        "NODE_ENV=development npm run build: passed on pinned baseline",
+        "python3 scripts/personal-lab.py start/stop/start: passed; exact Lab listener released, production Bridge PID80660 unchanged/ready",
+        "fresh seed-exit fixture: exited 0 within20s after correcting imported-timer retention",
+        "authenticated /api/auth/me and extension discovery200; unauthenticated discovery401",
+        "Mac-side Tailscale URL health200; remote-client path not yet exercised",
+        "Real Playwright baseline UI1440x1000 screenshot; no provider configured, honest empty state",
+        "python3 scripts/validate-personal-agent-catalog.py: must pass before commit"
+      ],
+      "limitations": [
+        "No personal feature implemented yet",
+        "Lab Agent Bridge unavailable by design/empty runtime; must not attach production to fake readiness",
+        "Same OS user is not a sandbox",
+        "Existing Tailscale forwarder maps loopback HTTP to private peers; auth seeded before listen",
+        "No native Desktop installer or physical remote device verification in PA00",
+        "Native board supervisor receipt proves initial scheduled read, not future notification acknowledgement"
+      ]
+    }
+  ]
+}

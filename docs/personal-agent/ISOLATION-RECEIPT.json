@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-10-08T15:08:41.030834+08:00",
+  "revision": "PA00-r1",
+  "worktree": "/Users/garbagod/projects/ekko-studio-personal-agent",
+  "baseline": "4874651e1a39df252361df2219294e6fdafe65af",
+  "authenticated_me_status": 200,
+  "unauthenticated_extensions_status": 401,
+  "authenticated_extensions_status": 200,
+  "extensions": {
+    "contractVersion": 1,
+    "extensions": []
+  },
+  "seed_exit_test": "passed",
+  "tailnet_health_from_mac": 200,
+  "tailnet_from_other_device": "not_verified",
+  "lab_mode": "isolated upstream baseline; personal feature not yet implemented",
+  "production_pid_bridge": 80660,
+  "production_ready": true,
+  "lifecycle": "start/stop/restart passed; port check excludes Tailscale mirror owner",
+  "new_home": "/Users/garbagod/Library/Application Support/ekko-personal-lab/studio-home",
+  "no_shared_agent_bridge": true
+}
