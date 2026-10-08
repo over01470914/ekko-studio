@@ -109,12 +109,51 @@
       ],
       "limitations": [
         "Same-machine loopback protocol acceptance only; no physical Windows, second host or remote-network verification",
-        "The receiver now requires an internal POSIX N-API adapter (openat/linkat/renameat/unlinkat/fstatat/readdir on directory fds). Where it cannot be built or loaded the receiver fails closed (PLATFORM_UNVERIFIED 503); only darwin/linux are exercised, and only the host platform's adapter is built",
+        "The receiver requires an internal POSIX N-API adapter (openat/linkat/renameat/unlinkat/fstatat/readdir on directory fds). Where it cannot be built or loaded the receiver fails closed (PLATFORM_UNVERIFIED 503); only darwin is exercised here, Linux remains unverified, and only the host platform's adapter is built",
         "Receiver fails closed on win32; POSIX O_NOFOLLOW is not asserted as Windows escape safety",
         "No UI, installer, central Naya connection or real user file touched; all fixtures are generated scratch",
         "Amendment r7 is recorded in SPEC/catalog in this slice; implementing client-only personal-mode startup and central transport belongs to PA02/PA03 and is not claimed here",
         "Filesystem/SQLite crash atomicity is not claimed: a crash mid-delete leaves the operation unknown for human inspection",
         "MCP toolset is a scoped pilot config artifact; the default profile MCP configuration is unchanged"
+      ]
+    },
+    {
+      "id": "PA01-QA06",
+      "project": "ekko-personal-agent",
+      "date": "2026-10-08+08:00",
+      "revision": "internal native ABI 2; protocol v1 / engine 0.1.0 / module 0.1.0 unchanged",
+      "component": "exact verified regular-file revision binding at native transfer, pre-apply cleanup and real cross-process regressions",
+      "files": [
+        "packages/personal-assistant/native/posix.c",
+        "packages/personal-assistant/src/posix.ts",
+        "packages/personal-assistant/src/receiver.ts",
+        "tests/personal-assistant/safety-regressions.test.ts",
+        "docs/personal-agent/PA01-RECEIPT.md",
+        "docs/personal-agent/CHANGELOG.md",
+        "docs/personal-agent/change-catalog.json"
+      ],
+      "contracts": [
+        "docs/personal-agent/SPEC.md expected-hash overwrite and owner-confirmed exact-revision delete; no relaxation",
+        "Internal linkAt/renameAt ABI 2 requires exact inode/device, size, nanosecond timestamps and bounded source/target bytes; old adapters fail closed before state creation",
+        "Public JSON Schema/OpenAPI, auth/grants and SQLite schema remain unchanged; post-apply unknown never redispatches"
+      ],
+      "verification": [
+        "QA original independent-rework-probes.cjs baseline: 8 controls pass, 4/4 real process races mutate an unapproved version (exit 1); rebuilt candidate: 8 controls pass, 4/4 schedules triggered, FILE_CHANGED/409, durable rejected, newer bytes retained, no unapproved mutation (exit 0)",
+        "TDD: 14 cross-process regressions fail / 22 pass before native revision binding; main fix 36/36; final focused suite 87/87 across 8 files, including 40 safety tests",
+        "Native byte-comparison tests reject matching-stat/different-bytes snapshots, missing revision arguments and oversized revisions; old ABI fails closed before state creation",
+        "node node_modules/typescript/bin/tsc --noEmit -p packages/server/tsconfig.json: exit 0",
+        "npm run build and npm run harness:check: exit 0; package/standalone/server native artifact SHA256 values match",
+        "npm run openapi:generate: exit 0; 5 personal routes, 31 canonical Personal definitions; 11 Service Center routes equal PA00 baseline and regenerated OpenAPI has no diff",
+        "node scripts/personal-agent-acceptance.mjs: exit 0; 2 real nodes, official SDK 11 calls, independent disk readback and distinct device identity",
+        "QA official-mcp-all-operations.cjs: exit 0; official SDK 11 calls, same hostname/workspace/path differentiated, hash conflict, operation-bound owner confirmation, open-session revocation, real SIGKILL/reopen unknown/no redispatch, secret-free results/logs",
+        "python3 scripts/personal-lab-module-off-smoke.py: exit 0; health ok 0.7.31, discovery 401/200, extensions=[], personal route 404",
+        "python3 scripts/validate-personal-agent-catalog.py: valid, 3 entries, all 43 integration-base changed paths covered; scoped evidence in docs/personal-agent/PA01-RECEIPT.md"
+      ],
+      "limitations": [
+        "macOS/POSIX same-machine loopback only; Linux, physical Windows, separate host/network, UI/native installer and live central Naya are unverified",
+        "Rechecks block completed edits before native entry; POSIX rename is not a filesystem-wide CAS against an arbitrary writer after the final native check",
+        "No production cutover, default-profile/config/memory/MCP writes, new dependencies or public wire/SQLite schema changes",
+        "Same-card independent QA acceptance remains required; implementation self-checks and QA-authored probe reruns are not a QA approval"
       ]
     }
   ]

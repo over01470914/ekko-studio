@@ -1,5 +1,13 @@
 # Personal Agent changelog
 
+## PA01 / QA-06 / internal native ABI 2 — 2026-10-08
+
+- Bound each native transfer to the final verified file revision: exact `dev`/`ino`, size, nanosecond `mtime`/`ctime` and bounded bytes. `openat(O_NOFOLLOW)` reopens on the anchored directory fd, compares bytes and named/opened revisions, then performs `linkat`/`renameat`. An edit completed before native entry cannot replace or delete an unapproved regular-file revision.
+- Applied the same boundary to staging and owner restore. Proven pre-apply mismatches return `FILE_CHANGED`/409, remove unused staging/trash receipts or release the restore reservation, and retain the newer bytes. Cleanup after a successful link remains outside that rejection seam, so post-apply failures stay durable `unknown` with no redispatch.
+- Require internal ABI 2 before receiver state creation; old/unbound adapters fail closed with `PLATFORM_UNVERIFIED`. Wire protocol, package/module versions, auth/grants and SQLite schema are unchanged.
+- Added real cross-process replacement, same-inode edits, restored-mtime and same-bytes/different-inode regressions. Focused checks: 87/87 (40 safety tests). QA's original executable probe now preserves all four newer revisions; its eight positive controls still pass. Both tracked and QA official-SDK two-node MCP gates pass with 11 calls each.
+- Verified macOS/POSIX loopback only. Linux, physical Windows, separate hosts, UI/installer and live central Naya remain unverified; POSIX rename is not a filesystem-wide compare-and-swap.
+
 ## PA01 / engine 0.1.0 / module 0.1.0 / protocol v1 — 2026-10-08
 
 - Reworked `files.ts`/`receiver.ts` onto a minimal internal POSIX N-API adapter (`native/posix.c`, `src/posix.ts`): path resolution and every mutation now run on directory file descriptors (`openat`/`fstatat`/`linkat`/`renameat`/`unlinkat`/`fdopendir`), so a root/parent/leaf swap cannot redirect a read or write outside the allowlist. The previous absolute-string path plus `realpath` recheck had a TOCTOU window; it is gone rather than patched. A missing/unloadable adapter fails closed with `PLATFORM_UNVERIFIED` (503) before any state is created.

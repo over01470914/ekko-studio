@@ -1,10 +1,10 @@
-import { mkdirSync, closeSync, writeFileSync, fsyncSync, constants } from 'node:fs'
+import { mkdirSync, closeSync, writeFileSync, fsyncSync, fstatSync, constants } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { ReceiptStore } from './receipts'
 import { bindRoot, assertRoot, contained, validatePath, anchorFile, anchorDirectory, readAnchored, readRegular, inspectText, type RootBinding } from './files'
-import { posix } from './posix'
+import { posix, fileRevision, type FileRevision } from './posix'
 import { PersonalError, sha256, canonical, parseRequest, validateResponse, matchesSchema, protocolSchema, limits, plainJson,
   type Capability, type FileRequest, type FileResponse, type ResultData, type SearchItem } from './protocol'
 
@@ -28,6 +28,7 @@ const validId = (id: unknown) => matchesSchema(id, protocolSchema.$defs.Id)
 const validCaps = (caps: unknown): caps is Capability[] => Array.isArray(caps) && caps.length <= 4 &&
   new Set(caps).size === caps.length && caps.every(cap => matchesSchema(cap, protocolSchema.$defs.Capability))
 const errorCode = (error: unknown) => error instanceof PersonalError ? error.code :
+  (error as NodeJS.ErrnoException)?.code === 'REVISION_MISMATCH' ? 'FILE_CHANGED' :
   (error as NodeJS.ErrnoException)?.code === 'EEXIST' ? 'CONFLICT' : 'IO_FAILURE'
 
 export class PersonalReceiver {
@@ -229,29 +230,42 @@ export class PersonalReceiver {
           const checkTarget = () => {
             directory.assertCurrent()
             if (request.mode === 'overwrite') {
-              if (readAnchored(directory, name).hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
+              const file = readAnchored(directory, name)
+              if (file.hash !== request.expectedSha256) throw new PersonalError('CONFLICT', 409)
+              return fileRevision(file.stat, file.bytes)
             } else {
               try { native.statAt(directory.fd, name); throw new PersonalError('CONFLICT', 409) }
               catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
             }
+            return null
           }
           checkTarget()
           const fd = native.openAt(directory.fd, temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL)
           staged = true
-          try { directory.assertCurrent(); writeFileSync(fd, bytes); fsyncSync(fd) } finally { closeSync(fd) }
+          let stagedRevision: FileRevision
+          try {
+            directory.assertCurrent(); writeFileSync(fd, bytes); fsyncSync(fd)
+            stagedRevision = fileRevision(fstatSync(fd, { bigint: true }), bytes)
+          } finally { closeSync(fd) }
           this.authorize(peer, request)
-          checkTarget()
+          const targetRevision = checkTarget()
           // Crossing the first target-changing primitive is conservatively
           // uncertain even if a hook/IO failure prevents its return.
           applied = true
-          if (request.mode === 'overwrite') {
-            native.renameAt(directory.fd, temp, directory.fd, name)
-            staged = false
-          } else {
-            try { native.linkAt(directory.fd, temp, directory.fd, name) }
-            catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') applied = false; throw error }
-            native.unlinkAt(directory.fd, temp); staged = false
+          try {
+            if (request.mode === 'overwrite') {
+              native.renameAt(directory.fd, temp, directory.fd, name, stagedRevision, targetRevision)
+              staged = false
+            } else {
+              native.linkAt(directory.fd, temp, directory.fd, name, stagedRevision, null)
+            }
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'REVISION_MISMATCH' ||
+                (request.mode === 'create' && (error as NodeJS.ErrnoException).code === 'EEXIST')) applied = false
+            throw error
           }
+          // Cleanup is outside the transfer's proven pre-apply rejection seam.
+          if (request.mode === 'create') { native.unlinkAt(directory.fd, temp); staged = false }
           fsyncSync(directory.fd)
           const readback = readAnchored(directory, name)
           if (readback.hash !== sha256(bytes)) throw new PersonalError('FILE_CHANGED', 409)
@@ -280,7 +294,14 @@ export class PersonalReceiver {
             this.store.db.prepare('INSERT INTO trash VALUES (?,?,?,?,?,?,0)').run(receiptId, peer.ownerId, workspace.id, request.path, file.hash, request.operationId)
             directory.assertCurrent(); trash.assertCurrent()
             applied = true
-            posix().renameAt(directory.fd, name, trash.fd, receiptId)
+            try { posix().renameAt(directory.fd, name, trash.fd, receiptId, fileRevision(before.stat, before.bytes), null) }
+            catch (error) {
+              if ((error as NodeJS.ErrnoException).code === 'REVISION_MISMATCH' || (error as NodeJS.ErrnoException).code === 'EEXIST') {
+                applied = false
+                this.store.db.prepare('DELETE FROM trash WHERE id=?').run(receiptId)
+              }
+              throw error
+            }
             fsyncSync(directory.fd); fsyncSync(trash.fd)
             const moved = readAnchored(trash, receiptId)
             if (moved.hash !== before.hash || moved.stat.dev !== before.stat.dev || moved.stat.ino !== before.stat.ino) throw new PersonalError('FILE_CHANGED', 409)
@@ -350,9 +371,9 @@ export class PersonalReceiver {
           directory.assertCurrent(); trash.assertCurrent()
           this.store.db.prepare('UPDATE trash SET restored=2 WHERE id=?').run(receiptId)
           applied = true
-          try { posix().linkAt(trash.fd, receiptId, directory.fd, name) }
+          try { posix().linkAt(trash.fd, receiptId, directory.fd, name, fileRevision(source.stat, source.bytes), null) }
           catch (error) {
-            if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+            if ((error as NodeJS.ErrnoException).code === 'EEXIST' || (error as NodeJS.ErrnoException).code === 'REVISION_MISMATCH') {
               applied = false; this.store.db.prepare('UPDATE trash SET restored=0 WHERE id=?').run(receiptId)
             }
             throw error

@@ -89,23 +89,26 @@ scope and are not claimed here.
 - Physical Windows/macOS cross-machine behavior, UNC/ADS/reparse/junction semantics and a
   real second host are **not** verified here. The receiver fails closed on `win32`
   (`PLATFORM_UNVERIFIED`) rather than claiming POSIX `O_NOFOLLOW` implies Windows safety.
-- No UI, no installer, no central Naya connection, no real user file was touched. All
-  fixtures are generated under the OS scratch dir and deleted afterwards.
+- Only the macOS/POSIX implementation was executed; Linux support is not verified by this run.
+- No personal UI or installer was implemented; no central Naya connection or real user file
+  was touched. Fixtures are generated under the private scratch dir. Credential-free evidence and selected
+  fixture state are retained for review; this is not real user data.
 - Crash-atomicity across the filesystem/SQLite boundary is not claimed: a crash between
   the trash rename and the receipt update leaves the operation `unknown` for a human to
   inspect, never an automatic retry.
-- The Lab launcher/`PID4362` listener was stopped by this worker with the exact-owner
-  script (`scripts/personal-lab.py stop`, `portReleased=true`,
-  `productionFingerprintsUnchanged=true`); it is unrelated to production Bridge
-  `PID80660`, which stayed ready.
+- For QA-06, Lab port `4362` was stopped through the exact-owner script (PID `36219`,
+  `portReleased=true`, `productionFingerprintsUnchanged=true`) before rebuilding.
+  Production Bridge was already PID `54908` before this run; the earlier `80660` must not
+  be used as evidence of continuity for this run.
 
 Live module-off isolation on the isolated Lab
-(`python3 scripts/personal-lab-module-off-smoke.py`, re-run after the containment rework):
+(`python3 scripts/personal-lab-module-off-smoke.py`, re-run after the QA-06 build):
 `health=ok`, `webui_version=0.7.31`, discovery `401` unauthenticated and `200` authenticated
 with `extensions=[]`, `personal-agent` absent, and `/api/studio/personal-agent/state` `404`
-while the flag is off. The Lab is currently running as exact-owned PID `36219`, started by
+while the flag is off. The Lab is running as exact-owned PID `67414`, started by
 this worker through `scripts/personal-lab.py` (status verified against the owner record
-before start); production Bridge `80660` stayed `ready` before, during and after. Honest
+before start); production Bridge `54908` was `ready` at the recorded stop/start/status observations.
+No production lifecycle operation was performed. Honest
 fingerprint note: this worker wrote no profile/config/memory, and `~/.hermes/config.yaml` and
 `~/.hermes/memories/MEMORY.md` are byte-identical to the PA00 handoff values. `~/.hermes/SOUL.md`
 does **not** match the earlier PA01-run value (`69f70d95…` → `1feaa6c2…`), but it already held
@@ -145,23 +148,80 @@ design/empty isolate and was not attached to production.
   unknown across restart for fsync/readback/receipt failure, native-absent fail-closed, and
   64-bit inode identity. No mocked filesystem.
 
+## QA-06 exact-revision rework (candidate, not QA approval)
+
+QA independently rejected review HEAD `030b73c2088aafd2689f0aa9607d63a2feb517e3` because
+dirfd containment alone did not bind a regular leaf's version to the native mutation. The
+unmodified QA executable was first rerun on that HEAD: all eight controls passed, but four
+real editor processes replaced or edited the approved overwrite/delete target after the
+last TS hash read and before native entry. All four unapproved versions were mutated
+(`exit 1`). This run fixes the version boundary, not merely its reported outcome.
+
+- `fileRevision` carries exact BigInt device/inode, size, nanosecond `mtime`/`ctime` and the
+  already-verified bounded bytes to internal native ABI **2**. Native `linkAt`/`renameAt`
+  reopen relative to the anchored directory fd with `O_NOFOLLOW`, compare regular/nlink
+  metadata and actual bytes, recheck the named/opened revisions, then apply. Overwrite
+  binds both staged source and expected-hash target; delete and restore bind their source
+  and require an absent destination. A missing/old ABI is refused before state creation.
+- Only native's proven **pre-apply** `REVISION_MISMATCH` maps to `FILE_CHANGED`/409 with
+  durable `rejected`. Newer target bytes remain in place; unused staging is removed; a
+  rejected delete removes its unused trash DB row; rejected restore releases its reservation.
+  The wire/auth/grant/confirmation contracts and SQLite schema are unchanged.
+- Cleanup after a successful create link is outside the pre-apply rejection catch. Cleanup,
+  fsync, readback and receipt failures after mutation remain `unknown`, including an
+  `EEXIST`-coded cleanup failure. An uncertain mutation is never automatically redispatched.
+- Regression evidence: initial **14 fail / 22 pass**, then **36/36** after native revision
+  binding. Final safety suite is **40/40** (22 prior + 18 added): real separate-process
+  replacement/in-place/restored-mtime/same-byte different-inode changes at overwrite,
+  delete and restore, changed create/overwrite staging, bounded actual-byte comparison
+  with matching stat metadata, old-ABI refusal, and post-link cleanup classification.
+  All eight focused files pass: **87/87**.
+- The **same QA executable**, not a substitute probe, now exits **0**: eight positive
+  controls pass, all four race hooks trigger real editor processes, all four operations
+  return `FILE_CHANGED`/409 and status `rejected`, and independent disk readback preserves
+  each newer revision (`unapprovedRevisionMutated=false` for all four).
+- Both tracked two-node acceptance and QA's official-SDK gate exit **0**, with 11 real
+  MCP calls each. The QA gate also proves same-name identity separation, hash conflict,
+  owner-confirmation binding, live-session revocation and real `SIGKILL`/reopen
+  `unknown` with no redispatch. Normal tool results/logs are credential-free.
+- `npm run build`, `npm run harness:check`, server `tsc --noEmit`, and OpenAPI generation
+  exit **0**. Regeneration changes no OpenAPI bytes: 5 personal routes / 31 canonical
+  Personal definitions; 11 Service Center routes equal PA00 baseline. All three built
+  native artifacts (package, standalone, server) have the same SHA-256.
+
+This verifies completed regular-file edits **before native entry**. POSIX `renameat` is
+not a filesystem-wide compare-and-swap; this receipt does not claim arbitrary concurrent
+writers after the final native check or filesystem/SQLite crash atomicity. No hash or
+confirmation requirement was relaxed. Only macOS/POSIX same-machine fixtures were exercised;
+same-card QA must independently accept before PA02/PA03 can proceed.
+
+Credential-free run evidence:
+`/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa01-qa06-run5-K5g07e/`
+(`focused.log`, `baseline-probes.log`, `independent-rework-probes.json`,
+`reworked/independent-rework-probes.json`, `build.log`, `harness.log`, `typecheck.log`,
+`openapi.log`, `acceptance.log`, `official-mcp-all-operations.json`, `official-mcp.log`,
+`module-off.log`, `lab-status.log`). The real `module-off-login-baseline.png` captures only
+the existing unauthenticated Lab login (no new personal UI or functional UI acceptance).
+The QA executable remains at
+`/Users/garbagod/.hermes/profiles/qa/cache/scratch/pa01-qa-t_ca822df3-run4/independent-rework-probes.cjs`;
+the official-SDK QA executable is in the sibling `pa01-qa-t_ca822df3-run2` directory.
+
 ## Publication
 
 - Branch `feat/personal-assistant-files` pushed to the verified fork origin
   (`https://github.com/over01470914/ekko-studio.git`).
-- Security-rework implementation commit SHA: `6705ff453fd302c5eaf5b742eaf2073589296634`. The
-  pushed branch HEAD is this receipt commit; its exact readback SHA after `git push` is recorded
-  in the PA01 card metadata for this run (a file cannot embed its own commit hash), and the
-  coordinator can verify it with `git rev-parse origin/feat/personal-assistant-files`. The pre-rework
-  implementation SHA `16cd76d91c775a88c7ae2a7e8e2f0fb6f69dc0bc` is the review HEAD that
-  QA rejected; `7720580ab45effde6828c18df07b5c1399e23436` was the earlier PA01 receipt SHA and
-  is superseded by both.
+- QA-06 implementation SHA and final review HEAD are recorded separately in this card's
+  run metadata after push and exact fork readback (a receipt cannot embed its own commit
+  hash). The prior containment implementation was `6705ff453fd302c5eaf5b742eaf2073589296634`;
+  its receipt/review HEAD `030b73c2088aafd2689f0aa9607d63a2feb517e3` was rejected for QA-06.
+  Earlier rejected HEAD `16cd76d91c775a88c7ae2a7e8e2f0fb6f69dc0bc` and receipt
+  `7720580ab45effde6828c18df07b5c1399e23436` are historical, not current-head claims.
 - No PR, release, tag, npm publish or production cutover was performed.
-- Retained two-node acceptance artifacts:
-  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-zuUa8N`
-  (official-SDK rework run; `acceptance-evidence.json` contains no credential; the mode-0600
-  peer configs hold generated fixture tokens only). The earlier PA01 run artifacts remain at
-  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-lJRK34`.
+- Current tracked two-node evidence:
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-oP8DlV/acceptance-evidence.json`.
+  Current QA official-SDK independent readback/state:
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa01-qa06-run5-K5g07e/official-mcp-ZAMrMM`.
+  Generated private peer configs are not deliverable artifacts.
 
 ## Verification commands (results in the card metadata)
 
@@ -173,6 +233,8 @@ node node_modules/vitest/vitest.mjs run tests/personal-assistant/engine.test.ts 
 node node_modules/vitest/vitest.mjs run tests/server/studio-extension-registry.test.ts \
   tests/server/studio-extension-openapi.test.ts tests/server/studio-extension-boundary.test.ts
 npm run openapi:generate
+node node_modules/typescript/bin/tsc --noEmit -p packages/server/tsconfig.json
+npm run harness:check
 node scripts/personal-agent-build.mjs
 node scripts/personal-agent-acceptance.mjs
 npm run build
