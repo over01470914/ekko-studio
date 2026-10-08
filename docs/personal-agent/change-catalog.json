@@ -92,8 +92,9 @@
         "node node_modules/typescript/bin/tsc --noEmit -p packages/server/tsconfig.json: passed",
         "npm run build: passed",
         "python3 scripts/validate-personal-agent-catalog.py: must pass before commit",
-        "scripts/personal-lab.py status/stop: exact-owner stop, port released, production fingerprints unchanged"
-        ,"python3 scripts/personal-lab-module-off-smoke.py: lab healthy 0.7.31, discovery 401 unauthenticated / 200 authenticated, advertised extensions [], personal-agent absent, /api/studio/personal-agent/state 404 when off"
+        "scripts/personal-lab.py status/stop: exact-owner stop, port released, production fingerprints unchanged",
+        "python3 scripts/personal-lab-module-off-smoke.py: lab healthy 0.7.31, discovery 401 unauthenticated / 200 authenticated, advertised extensions [], personal-agent absent, /api/studio/personal-agent/state 404 when off",
+        "real same-machine two-node acceptance artifacts retained under the developer scratch dir; the evidence json contains no credential"
       ],
       "limitations": [
         "Same-machine loopback protocol acceptance only; no physical Windows, second host or remote-network verification",

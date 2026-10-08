@@ -72,6 +72,25 @@ separate-host or remote-network check, and it does not assert Windows escape sem
   `productionFingerprintsUnchanged=true`); it is unrelated to production Bridge
   `PID80660`, which stayed ready.
 
+Live module-off isolation on the isolated Lab
+(`python3 scripts/personal-lab-module-off-smoke.py`): `health=ok`,
+`webui_version=0.7.31`, discovery `401` unauthenticated and `200` authenticated with
+`extensions=[]`, `personal-agent` absent, and `/api/studio/personal-agent/state` `404`
+while the flag is off. The Lab was then restarted through the exact-owner script (new
+exact-owned PID, health `ok`, production Bridge `80660` still ready) so the PA00 handoff
+condition is restored.
+
+## Publication
+
+- Branch `feat/personal-assistant-files` pushed to the verified fork origin
+  (`https://github.com/over01470914/ekko-studio.git`).
+- Remote readback SHA: `7720580ab45effde6828c18df07b5c1399e23436` (matches local `HEAD`).
+- No PR, release, tag, npm publish or production cutover was performed.
+- Retained two-node acceptance artifacts:
+  `/Users/garbagod/.hermes/profiles/developer/cache/scratch/pa-accept-lJRK34`
+  (`acceptance-evidence.json` contains no credential; the mode-0600 peer configs hold
+  generated fixture tokens only).
+
 ## Verification commands (results in the card metadata)
 
 ```
