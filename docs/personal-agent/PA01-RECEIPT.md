@@ -149,7 +149,10 @@ design/empty isolate and was not attached to production.
 
 - Branch `feat/personal-assistant-files` pushed to the verified fork origin
   (`https://github.com/over01470914/ekko-studio.git`).
-- Remote readback SHA: `FINAL_SHA_PLACEHOLDER` (matches local `HEAD`). The pre-rework
+- Security-rework implementation commit SHA: `6705ff453fd302c5eaf5b742eaf2073589296634`. The
+  pushed branch HEAD is this receipt commit; its exact readback SHA after `git push` is recorded
+  in the PA01 card metadata for this run (a file cannot embed its own commit hash), and the
+  coordinator can verify it with `git rev-parse origin/feat/personal-assistant-files`. The pre-rework
   implementation SHA `16cd76d91c775a88c7ae2a7e8e2f0fb6f69dc0bc` is the review HEAD that
   QA rejected; `7720580ab45effde6828c18df07b5c1399e23436` was the earlier PA01 receipt SHA and
   is superseded by both.
