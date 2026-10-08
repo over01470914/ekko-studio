@@ -256,9 +256,10 @@ or live central Naya acceptance is claimed. Same-card QA must accept before down
 
 - Branch `feat/personal-assistant-files` pushed to the verified fork origin
   (`https://github.com/over01470914/ekko-studio.git`).
-- QA-07 implementation SHA and the final receipt-only review HEAD/remote SHA are recorded
-  separately in the native card metadata after feature-ref push and exact readback; a receipt
-  cannot embed its own commit hash. QA-07 does not carry a QA acceptance or release claim.
+- QA-07 implementation SHA: `a4bf70ec9f23f51958a970e18f0aa42ff93fec79`, pushed and read back
+  from the exact fork feature ref. This receipt-only successor changes no tested code; its
+  final review HEAD/remote SHA is recorded separately in the native card metadata after
+  push/readback (a receipt cannot embed its own commit hash). QA-07 is not QA acceptance or release.
 - Historical QA-06 implementation SHA: `39e16c47b584e207ce257ed1117d023ada6197c8`, pushed and read back
   from the exact fork feature ref. That QA-06 receipt-only successor changed no tested code;
   its review HEAD/remote SHA was recorded separately in the card's run metadata after push
