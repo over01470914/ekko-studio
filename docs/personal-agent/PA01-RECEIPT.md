@@ -62,8 +62,9 @@ over stdio:
   read, create, `expectedSha256` overwrite, owner-minted-confirmation delete,
   `personal_operation_status` for each mutation, and a read of the owner-restored file. Every
   result is checked against the receiver's own disk contents (independent readback), and the
-  script asserts no generated credential or private root appears in any tool result or child
-  log; a mismatch exits non-zero.
+  tracked script asserts no generated credential or private root appears in tool results;
+  the separate QA official-SDK gate additionally checks captured child logs for generated
+  credentials. A mismatch exits non-zero.
 - Identity differentiation on two real fixtures: the identical relative path `same.txt`
   resolved to `target-identity-content` on `target-device/target-workspace` and
   `sender-identity-content` on `sender-device/sender-workspace` (`distinct=true`), so
