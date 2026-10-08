@@ -2,12 +2,13 @@
 import { computed } from 'vue'
 import { NButton, NSelect } from 'naive-ui'
 import type { Endpoint, HealthResult, ServiceEntry } from './api'
+import { selectedEntrance } from './api'
 import { useServiceCenterTranslation } from './translation'
 import ServiceIcon from './ServiceIcon.vue'
 const props = defineProps<{ service: ServiceEntry; favorite: boolean; health?: HealthResult; nodeName?: string; selectedEndpointId?: string }>()
 const emit = defineEmits<{ favorite: []; info: []; select: [id: string] }>()
 const t = useServiceCenterTranslation()
-const entry = computed<Endpoint | undefined>(() => props.service.endpoints.find(item => item.id === (props.selectedEndpointId || props.service.defaultEndpointId)))
+const entry = computed<Endpoint | undefined>(() => selectedEntrance(props.service, props.selectedEndpointId))
 const options = computed(() => props.service.endpoints.map(item => ({ label: item.label, value: item.id })))
 </script>
 <template>
@@ -20,7 +21,7 @@ const options = computed(() => props.service.endpoints.map(item => ({ label: ite
     <p v-if="props.service.description" class="service-card__description">{{ props.service.description }}</p>
     <div class="service-card__context">
       <span v-if="props.nodeName" class="service-card__location"><ServiceIcon name="location" :size="15" />{{ props.nodeName }}</span>
-      <button class="service-card__network" type="button" @click="emit('info')">{{ t(`serviceCenter.network.${entry?.network || 'public'}`) }}<span v-if="entry?.login === 'required'"> · {{ t('serviceCenter.loginRequired') }}</span></button>
+      <button class="service-card__network" type="button" @click="emit('info')">{{ entry ? t(`serviceCenter.network.${entry.network}`) : t('serviceCenter.unavailable') }}<span v-if="entry?.login === 'required'"> · {{ t('serviceCenter.loginRequired') }}</span></button>
       <button class="service-card__status" type="button" @click="emit('info')"><span class="service-card__dot" :class="`service-card__dot--${props.health?.state || 'untested'}`" />{{ t(`serviceCenter.health.${props.health?.state || 'untested'}`) }}</button>
     </div>
     <div class="service-card__footer">

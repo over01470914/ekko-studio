@@ -20,6 +20,10 @@ export interface ServiceEntry {
   healthUrl?: string
   healthCheckEnabled?: boolean
 }
+export function selectedEntrance(service: ServiceEntry, selectedId?: string): Endpoint | undefined {
+  return service.endpoints.find(item => item.id === selectedId) ||
+    service.endpoints.find(item => item.id === service.defaultEndpointId)
+}
 export interface Manifest { schemaVersion: 2; categories: Category[]; nodes: DeploymentNode[]; services: ServiceEntry[] }
 export interface LegacyManifest { schemaVersion: 1; services: Array<Omit<ServiceEntry, 'categoryId' | 'nodeId' | 'endpoints' | 'defaultEndpointId'> & { category: string; url: string; network: Network }> }
 export interface HealthResult { state: string; checkedAt: string | null; latencyMs: number | null; status: number | null }

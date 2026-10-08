@@ -6,11 +6,14 @@ const api = vi.hoisted(() => ({
   fetchCatalog: vi.fn(), saveService: vi.fn(), deleteService: vi.fn(), setFavorite: vi.fn(), checkHealth: vi.fn(),
 }))
 const auth = vi.hoisted(() => ({ invalidate: (() => {}) as () => void }))
-vi.mock('@/modules/studio-extensions/service-center/api', () => api)
+vi.mock('@/modules/studio-extensions/service-center/api', async () => ({
+  ...await vi.importActual('@/modules/studio-extensions/service-center/api'), ...api,
+}))
 vi.mock('@/modules/studio-extensions/service-center/host', () => ({ onServiceCenterReset: (callback: () => void) => { auth.invalidate = callback; return () => {} } }))
 import { useServiceCenterStore } from '@/modules/studio-extensions/service-center/store'
 import { serviceCenterMessages } from '@/modules/studio-extensions/service-center/messages'
 import { sc02Localized } from '@/modules/studio-extensions/service-center/sc02-locales'
+import { selectedEntrance, type ServiceEntry } from '@/modules/studio-extensions/service-center/api'
 
 const service = { id: 'sample', name: 'Sample', description: 'Browser UI', icon: 'globe', categoryId: null, nodeId: null, tags: [], endpoints: [{ id: 'primary', label: 'Web', url: 'https://example.org/', network: 'public', login: 'unknown' }], defaultEndpointId: 'primary', enabled: true, sortOrder: 0 }
 const response = (revision = 1) => ({ schemaVersion: 2, revision, categories: [], nodes: [], services: [service], favorites: [], health: {}, capabilities: { canManageServices: false, canManageEditors: false } })
@@ -61,6 +64,13 @@ describe('Service Center client store', () => {
 })
 
 describe('Service Center v2 locale ownership', () => {
+  it('resolves a surviving default after the selected entrance is deleted without guessing its network', () => {
+    const hostOnly = { ...service, endpoints: [{ ...service.endpoints[0], network: 'local' }], defaultEndpointId: 'primary' } as ServiceEntry
+    expect(selectedEntrance(hostOnly, 'removed')?.id).toBe('primary')
+    expect(selectedEntrance(hostOnly, 'removed')?.network).toBe('local')
+    expect(selectedEntrance(hostOnly)?.network).toBe('local')
+    expect(selectedEntrance({ ...hostOnly, endpoints: [] }, 'removed')).toBeUndefined()
+  })
   it('provides new panel, entrance and host-only network copy in every supported locale', () => {
     expect(Object.keys(serviceCenterMessages)).toHaveLength(11)
     for (const locale of Object.keys(sc02Localized) as Array<keyof typeof sc02Localized>) {

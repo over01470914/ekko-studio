@@ -4,6 +4,7 @@ import { NButton, NInput, NModal, NSelect, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useServiceCenterStore } from './store'
 import * as api from './api'
+import { selectedEntrance } from './api'
 import type { ImportPreview, Manifest, ServiceEntry } from './api'
 import ServiceCard from './ServiceCard.vue'
 import ServiceEditor from './ServiceEditor.vue'
@@ -26,7 +27,7 @@ const selectedEndpoints = ref<Record<string, string>>({})
 const panelOpen = ref(false)
 const panelId = ref<string | null>(null)
 const panelService = computed(() => store.catalog.services.find(item => item.id === panelId.value) || null)
-const panelEndpoint = computed(() => panelService.value?.endpoints.find(item => item.id === (selectedEndpoints.value[panelService.value!.id] || panelService.value!.defaultEndpointId)))
+const panelEndpoint = computed(() => panelService.value ? selectedEntrance(panelService.value, selectedEndpoints.value[panelService.value.id]) : undefined)
 const managerOpen = ref(false)
 const onlyFavorites = ref(false)
 const editing = ref(false)
@@ -57,7 +58,7 @@ const nodes = computed(() => [{ label: t('serviceCenter.allDeployments'), value:
 const networks = computed(() => [{ label: t('serviceCenter.allNetworks'), value: 'all' }, ...(['local', 'lan', 'tailscale', 'public'] as Network[]).map(value => ({ label: t(`serviceCenter.network.${value}`), value }))])
 const visible = computed(() => store.catalog.services.filter(service => {
   const query = search.value.trim().toLocaleLowerCase()
-  const entry = service.endpoints.find(item => item.id === (selectedEndpoints.value[service.id] || service.defaultEndpointId))
+  const entry = selectedEntrance(service, selectedEndpoints.value[service.id])
   const categoryName = store.catalog.categories.find(item => item.id === service.categoryId)?.name || ''
   const nodeName = store.catalog.nodes.find(item => item.id === service.nodeId)?.name || ''
   return (category.value === 'all' || (category.value === '__none' ? service.categoryId === null : service.categoryId === category.value)) &&

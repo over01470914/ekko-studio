@@ -19045,7 +19045,8 @@
                     },
                     "categories": {
                       "type": "array",
-                      "maxItems": 100,
+                      "maxItems": 200,
+                      "description": "Category display names are case- and Unicode-spelling-sensitive to preserve legacy labels",
                       "items": {
                         "$ref": "#/components/schemas/ServiceCentercategory"
                       }
@@ -26459,7 +26460,8 @@
           },
           "categories": {
             "type": "array",
-            "maxItems": 100,
+            "maxItems": 200,
+            "description": "Category display names are case- and Unicode-spelling-sensitive to preserve legacy labels",
             "items": {
               "$ref": "#/components/schemas/ServiceCentercategory"
             }

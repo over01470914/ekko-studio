@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises'
 
-import { ServiceCenterError, validateManifest, validateService, validateCategory, validateNode, normalizeLegacy, type Category, type DeploymentNode, type ServiceEntry, type ServiceManifest } from './manifest'
+import { ServiceCenterError, validateManifest, validateService, validateCategory, validateNode, normalizeLegacy, categoryNameKey, type Category, type DeploymentNode, type ServiceEntry, type ServiceManifest } from './manifest'
 import { dataPath, updateFiles } from './storage'
 
 const catalogPath = () => dataPath('catalog.json')
@@ -133,7 +133,8 @@ function importPlan(current: Catalog, input: unknown) {
     }
   }
   for (const kind of ['categories', 'nodes'] as const) for (const item of incoming[kind]) {
-    if (current[kind].some(previous => previous.id !== item.id && previous.name.normalize('NFKC').toLowerCase() === item.name.normalize('NFKC').toLowerCase())) throw new ServiceCenterError('Incoming name belongs to another ID')
+    const nameKey = kind === 'categories' ? categoryNameKey : (name: string) => name.normalize('NFKC').toLowerCase()
+    if (current[kind].some(previous => previous.id !== item.id && nameKey(previous.name) === nameKey(item.name))) throw new ServiceCenterError('Incoming name belongs to another ID')
   }
   const refs = incoming.services.map(service => ({ id: service.id, categoryId: service.categoryId, nodeId: service.nodeId }))
   return { incoming, conflicts, newIds, refs }

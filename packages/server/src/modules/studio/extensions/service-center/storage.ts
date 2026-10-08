@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, writeFile, chmod } from 'fs/promises'
+import { mkdir, readFile, rename, rm, open, chmod } from 'fs/promises'
 import { randomUUID } from 'crypto'
 import { dirname, relative, resolve } from 'path'
 import { serviceCenterHost } from './host'
@@ -13,14 +13,20 @@ async function read(path: string): Promise<string | undefined> {
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
 }
 async function write(path: string, value: string | undefined): Promise<void> {
-  if (value === undefined) { await rm(path, { force: true }); return }
   const dir = dirname(path)
   await mkdir(dir, { recursive: true, mode: 0o700 })
   await chmod(dir, 0o700)
+  const syncDirectory = async () => {
+    const handle = await open(dir, 'r')
+    try { await handle.sync() } finally { await handle.close() }
+  }
+  if (value === undefined) { await rm(path, { force: true }); await syncDirectory(); return }
   const temp = `${path}.${randomUUID()}.tmp`
   try {
-    await writeFile(temp, value, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
+    const handle = await open(temp, 'wx', 0o600)
+    try { await handle.writeFile(value, 'utf8'); await handle.sync() } finally { await handle.close() }
     await rename(temp, path)
+    await syncDirectory()
   } finally { await rm(temp, { force: true }) }
 }
 export async function updateFiles<T>(paths: string[], change: (raw: Record<string, string | undefined>) => { files: Record<string, string | undefined>; result: T }): Promise<T> {
@@ -36,11 +42,13 @@ export async function updateFiles<T>(paths: string[], change: (raw: Record<strin
     try {
       for (const path of locked) {
         if (!Object.hasOwn(files, path)) continue
-        await write(path, files[path])
         written.push(path)
+        await write(path, files[path])
       }
     } catch (error) {
-      for (const path of written.reverse()) await write(path, current[path])
+      for (const path of written.reverse()) {
+        if (await read(path) !== current[path]) await write(path, current[path])
+      }
       throw error
     }
     return result

@@ -47,6 +47,8 @@ const keys = (value: Record<string, unknown>, allowed: string[], requiredKeys: s
   !Object.keys(value).some(key => !allowed.includes(key)) && requiredKeys.every(key => Object.hasOwn(value, key))
 const unique = (values: string[]) => new Set(values).size === values.length
 const normalized = (value: string) => value.normalize('NFKC').toLocaleLowerCase()
+// Legacy categories are display text, not case-insensitive identifiers.
+export const categoryNameKey = (value: string) => value
 // Query-key deny lists cannot cover vendor-specific signed URLs or new
 // credential aliases. Allow only ordinary navigation/filter keys and fail
 // closed on everything else, including nested or still-encoded key names.
@@ -121,15 +123,14 @@ export function validateService(value: unknown): ServiceEntry {
 }
 export function validateManifest(value: unknown): ServiceManifest {
   if (!object(value) || !keys(value, ['schemaVersion', 'categories', 'nodes', 'services'], ['schemaVersion', 'categories', 'nodes', 'services']) ||
-    value.schemaVersion !== 2 || !Array.isArray(value.categories) || value.categories.length > 100 ||
+    value.schemaVersion !== 2 || !Array.isArray(value.categories) || value.categories.length > 200 ||
     !Array.isArray(value.nodes) || value.nodes.length > 100 || !Array.isArray(value.services) ||
     value.services.length > schema.properties.services.maxItems) throw new ServiceCenterError('Unsupported or invalid manifest schemaVersion')
   const categories = value.categories.map(validateCategory)
   const nodes = value.nodes.map(validateNode)
   const services = value.services.map(validateService)
-  for (const collection of [categories, nodes]) {
-    if (!unique(collection.map(item => item.id)) || !unique(collection.map(item => normalized(item.name)))) throw new ServiceCenterError('Duplicate organization ID or name')
-  }
+  if (!unique(categories.map(item => item.id)) || !unique(categories.map(item => categoryNameKey(item.name))) ||
+    !unique(nodes.map(item => item.id)) || !unique(nodes.map(item => normalized(item.name)))) throw new ServiceCenterError('Duplicate organization ID or name')
   if (!unique(services.map(service => service.id)) || services.some(service =>
     (service.categoryId !== null && !categories.some(item => item.id === service.categoryId)) ||
     (service.nodeId !== null && !nodes.some(item => item.id === service.nodeId)))) throw new ServiceCenterError('Duplicate service ID or invalid reference')
@@ -160,14 +161,14 @@ export function normalizeLegacy(input: unknown, existing: Category[] = []): Serv
   const categories = [...existing]
   const names = [...new Set(legacy.services.map(service => service.category))].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
   for (const name of names) {
-    if (categories.some(item => normalized(item.name) === normalized(name))) continue
+    if (categories.some(item => categoryNameKey(item.name) === categoryNameKey(name))) continue
     let candidate = legacyCategoryId(name)
     let suffix = 1
     while (categories.some(item => item.id === candidate)) candidate = `${legacyCategoryId(name)}-${suffix++}`
     categories.push({ id: candidate, name, sortOrder: categories.length })
   }
   const services = legacy.services.map(({ category, url, network, ...service }) => ({ ...service,
-    categoryId: categories.find(item => normalized(item.name) === normalized(category))!.id,
+    categoryId: categories.find(item => categoryNameKey(item.name) === categoryNameKey(category))!.id,
     nodeId: null, endpoints: [{ id: 'primary', label: 'Primary', url, network, login: 'unknown' as const }], defaultEndpointId: 'primary',
   }))
   return validateManifest({ schemaVersion: 2, categories, nodes: [], services })

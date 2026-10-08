@@ -18,7 +18,7 @@ async function directory(page: Page, editor: boolean) {
   let failNextSave = false
   const requests: Array<{ method: string; path: string; body: any }> = []
   await page.route('**/api/studio/extensions', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
-    contractVersion: 1, extensions: [{ id: 'service-center', version: '2.0.0', apiBase: '/api/studio/service-center',
+    contractVersion: 1, extensions: [{ id: 'service-center', version: '2.0.1', apiBase: '/api/studio/service-center',
       capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants', 'taxonomy', 'multi-entry'] }],
   }) }))
   await page.route('**/api/studio/service-center/**', async route => {

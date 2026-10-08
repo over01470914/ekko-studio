@@ -86,6 +86,78 @@ describe('Service Center schema2 migration and organization', () => {
     expect(await readdir(root)).toEqual(['catalog.json'])
     vi.doUnmock('fs/promises')
   })
+  it('preserves distinct legacy category display names without case or Unicode merging', async () => {
+    const names = ['Tools', 'tools', 'Ｔools']
+    const original = JSON.stringify({ revision: 9, schemaVersion: 1, services: names.map((name, index) => ({ ...legacyService(name), id: `old-${index}` })) })
+    await writeFile(join(root, 'catalog.json'), original)
+    const normalized = await catalog.catalog()
+    expect(normalized.categories).toHaveLength(3)
+    expect(normalized.services.map(item => normalized.categories.find(category => category.id === item.categoryId)!.name)).toEqual(names)
+    expect(await readFile(join(root, 'catalog.json'), 'utf8')).toBe(original)
+    const migrated = await catalog.saveService(9, normalized.services[0])
+    expect(migrated.categories).toEqual(normalized.categories)
+    expect(await readFile(join(root, 'catalog-v1.backup.json'), 'utf8')).toBe(original)
+  })
+  it('reads and migrates every legal legacy category at the 200-service limit', async () => {
+    const original = JSON.stringify({ revision: 5, schemaVersion: 1, services: Array.from({ length: 200 }, (_, index) => ({ ...legacyService(`Category ${index}`), id: `old-${index}` })) })
+    await writeFile(join(root, 'catalog.json'), original)
+    const normalized = await catalog.catalog()
+    expect(normalized.categories).toHaveLength(200)
+    expect(normalized.services).toHaveLength(200)
+    expect(await readFile(join(root, 'catalog.json'), 'utf8')).toBe(original)
+    const migrated = await catalog.saveService(5, normalized.services[0])
+    expect(migrated.categories).toEqual(normalized.categories)
+    expect(migrated.services).toHaveLength(200)
+    expect(await readFile(join(root, 'catalog-v1.backup.json'), 'utf8')).toBe(original)
+  })
+  it('syncs backup bytes and its directory before replacing the legacy catalog', async () => {
+    const original = JSON.stringify({ revision: 2, schemaVersion: 1, services: [legacyService()] })
+    await writeFile(join(root, 'catalog.json'), original)
+    const actual = await import('fs/promises')
+    const operations: string[] = []
+    vi.doMock('fs/promises', () => ({ ...actual,
+      open: async (path: string, flags: string, mode?: number) => {
+        const handle = await actual.open(path, flags, mode)
+        return { writeFile: handle.writeFile.bind(handle), close: handle.close.bind(handle), sync: async () => { operations.push(`sync:${path}`); await handle.sync() } }
+      },
+      rename: async (source: string, dest: string) => { operations.push(`rename:${dest}`); await actual.rename(source, dest) },
+    }))
+    vi.resetModules()
+    const { installServiceCenterHost } = await import('../../packages/server/src/modules/studio/extensions/service-center/host')
+    installServiceCenterHost({ dataRoot: root, actorFor: () => ({ id: 1, role: 'super_admin' }), eligibleAdmin: () => true })
+    const guarded = await import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
+    await guarded.saveService(2, service())
+    const backupRename = operations.indexOf(`rename:${join(root, 'catalog-v1.backup.json')}`)
+    const catalogRename = operations.indexOf(`rename:${join(root, 'catalog.json')}`)
+    expect(operations.findIndex(item => item.startsWith(`sync:${join(root, 'catalog-v1.backup.json')}.`))).toBeLessThan(backupRename)
+    expect(operations.indexOf(`sync:${root}`)).toBeGreaterThan(backupRename)
+    expect(operations.indexOf(`sync:${root}`)).toBeLessThan(catalogRename)
+    expect(operations.at(-1)).toBe(`sync:${root}`)
+  })
+  it('restores original bytes if directory synchronization fails after catalog replacement', async () => {
+    const original = JSON.stringify({ revision: 2, schemaVersion: 1, services: [legacyService()] })
+    await writeFile(join(root, 'catalog.json'), original)
+    const actual = await import('fs/promises')
+    let renamedCatalog = false
+    let injected = false
+    vi.doMock('fs/promises', () => ({ ...actual,
+      open: async (path: string, flags: string, mode?: number) => {
+        const handle = await actual.open(path, flags, mode)
+        return { writeFile: handle.writeFile.bind(handle), close: handle.close.bind(handle), sync: async () => {
+          if (path === root && renamedCatalog && !injected) { injected = true; throw new Error('injected directory sync failure') }
+          await handle.sync()
+        } }
+      },
+      rename: async (source: string, dest: string) => { await actual.rename(source, dest); if (dest === join(root, 'catalog.json')) renamedCatalog = true },
+    }))
+    vi.resetModules()
+    const { installServiceCenterHost } = await import('../../packages/server/src/modules/studio/extensions/service-center/host')
+    installServiceCenterHost({ dataRoot: root, actorFor: () => ({ id: 1, role: 'super_admin' }), eligibleAdmin: () => true })
+    const guarded = await import('../../packages/server/src/modules/studio/extensions/service-center/catalog')
+    await expect(guarded.saveService(2, service())).rejects.toThrow('injected directory sync failure')
+    expect(await readFile(join(root, 'catalog.json'), 'utf8')).toBe(original)
+    expect(await readdir(root)).toEqual(['catalog.json'])
+  })
   it('serializes competing writes so only one actor can commit an expected revision', async () => {
     const outcomes = await Promise.allSettled([catalog.saveService(0, service('alpha')), catalog.saveService(0, service('beta'))])
     expect(outcomes.map(outcome => outcome.status).sort()).toEqual(['fulfilled', 'rejected'])
