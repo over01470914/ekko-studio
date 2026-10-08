@@ -1,0 +1,13 @@
+{
+  "name": "@ekko/personal-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bounded receiver-owned file operations, protocol v1 and scoped MCP pilot",
+  "main": "dist/index.cjs",
+  "types": "src/index.ts",
+  "engines": { "node": ">=23.0.0" },
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./dist/index.cjs" },
+    "./protocol.schema.json": "./protocol.schema.json"
+  }
+}

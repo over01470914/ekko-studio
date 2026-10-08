@@ -72,6 +72,8 @@
     "build:desktop:win": "npm run build && npm run desktop:install && npm --prefix packages/desktop run dist -- --win --publish never",
     "build:desktop:linux": "npm run build && npm run desktop:install && npm --prefix packages/desktop run dist -- --linux --publish never",
     "openapi:generate": "node scripts/generate-openapi.mjs",
+    "build:personal-assistant": "node scripts/personal-agent-build.mjs",
+    "personal-agent:acceptance": "node scripts/personal-agent-acceptance.mjs",
     "claude": "claude --dangerously-skip-permissions",
     "test:workflow-live": "vite-node scripts/workflow-live-acceptance.ts",
     "pack:npm": "node scripts/pack-npm-releases.mjs",

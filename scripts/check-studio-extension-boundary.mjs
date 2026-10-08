@@ -8,6 +8,8 @@ export const upstream = '942bb78fa2e3722fe14e6778b0ff21d50662fa27'
 const moduleRoots = [
   'packages/client/src/modules/studio-extensions/service-center/',
   'packages/server/src/modules/studio/extensions/service-center/',
+  'packages/server/src/modules/studio/extensions/personal-agent/',
+  'packages/personal-assistant/',
 ]
 const shared = new Set([
   'packages/client/src/main.ts', 'packages/client/src/App.vue',
@@ -19,11 +21,18 @@ const shared = new Set([
   'scripts/generate-openapi.mjs', 'scripts/studio-extension-openapi.mjs',
   'scripts/check-studio-extension-boundary.mjs', 'docs/openapi.json',
   'docs/harness/studio-extensions.md',
+  'package.json',
+  'scripts/build-server.mjs',
+  'scripts/personal-lab.py', 'scripts/personal-lab-seed.ts',
+  'scripts/validate-personal-agent-catalog.py',
+  'scripts/personal-agent-build.mjs', 'scripts/personal-agent-acceptance.mjs',
+  'scripts/personal-agent-fd-probe.mjs',
 ])
 const tests = /^(tests\/(client\/(service-center|studio-extension-registry|i18n-coverage)\.test\.ts|server\/(service-center|service-center-health|studio-extension-registry|studio-extension-openapi|studio-extension-boundary)\.test\.ts|e2e\/(service-center|service-center-live|fixtures)\.(spec\.)?ts|helpers\/service-center-preview\.ts))$/
 export function allowedChangedPath(path) {
   return moduleRoots.some(root => path.startsWith(root)) || path.startsWith('docs/service-center/') ||
-    shared.has(path) || tests.test(path)
+    path.startsWith('docs/personal-agent/') || /^tests\/personal-assistant\/[a-z-]+\.test\.ts$/.test(path) ||
+    /^tests\/server\/personal-agent[a-z-]*\.test\.ts$/.test(path) || shared.has(path) || tests.test(path)
 }
 export function moduleImportViolations(path, source) {
   const root = moduleRoots.find(item => path.startsWith(item))
@@ -33,7 +42,9 @@ export function moduleImportViolations(path, source) {
     if (specifier.startsWith('@/') || specifier.startsWith('modules/')) return true
     if (!specifier.startsWith('.')) return false
     const target = relative('.', resolve(dirname(path), specifier))
-    return !target.startsWith(root) && target !== `${root.slice(0, -'service-center/'.length)}registry`
+    const registry = `${dirname(root.slice(0, -1))}/registry`
+    const personalPublic = root.endsWith('/personal-agent/') && target === 'packages/personal-assistant/src'
+    return !target.startsWith(root) && target !== registry && !personalPublic
   }).map(specifier => `${path}: forbidden import ${specifier}`)
 }
 const run = args => execFileSync('git', args, { encoding: 'utf8' }).trim()

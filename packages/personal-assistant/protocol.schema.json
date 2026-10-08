@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ekko:personal-assistant:file-protocol:v1",
+  "title": "Personal Assistant File Protocol v1",
+  "$ref": "#/$defs/Request",
+  "$defs": {
+    "Id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", "minLength": 1, "maxLength": 64 },
+    "OperationId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{15,63}$", "minLength": 16, "maxLength": 64 },
+    "Hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "minLength": 64, "maxLength": 64 },
+    "Path": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "Capability": { "type": "string", "enum": ["search", "read", "write", "delete"] },
+    "Request": {
+      "oneOf": [
+        { "$ref": "#/$defs/Search" }, { "$ref": "#/$defs/Read" },
+        { "$ref": "#/$defs/Create" }, { "$ref": "#/$defs/Overwrite" },
+        { "$ref": "#/$defs/Delete" }, { "$ref": "#/$defs/Status" }
+      ]
+    },
+    "Search": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action", "query", "mode", "limit"],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" },
+        "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "action": { "const": "search" }, "query": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "mode": { "type": "string", "enum": ["filename", "content", "both"] },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "cursor": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "Read": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action", "path"],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" },
+        "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "action": { "const": "read" }, "path": { "$ref": "#/$defs/Path" },
+        "offset": { "type": "integer", "minimum": 0, "maximum": 65536 },
+        "length": { "type": "integer", "minimum": 1, "maximum": 32768 }
+      }
+    },
+    "Create": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action", "path", "mode", "content"],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" },
+        "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "action": { "const": "write" }, "path": { "$ref": "#/$defs/Path" },
+        "mode": { "const": "create" }, "content": { "type": "string", "maxLength": 65536 }
+      }
+    },
+    "Overwrite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action", "path", "mode", "content", "expectedSha256"],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" },
+        "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "action": { "const": "write" }, "path": { "$ref": "#/$defs/Path" },
+        "mode": { "const": "overwrite" }, "content": { "type": "string", "maxLength": 65536 },
+        "expectedSha256": { "$ref": "#/$defs/Hash" }
+      }
+    },
+    "Delete": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action", "path", "expectedSha256", "confirmationId"],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" },
+        "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "action": { "const": "delete" }, "path": { "$ref": "#/$defs/Path" },
+        "expectedSha256": { "$ref": "#/$defs/Hash" }, "confirmationId": { "$ref": "#/$defs/OperationId" }
+      }
+    },
+    "Status": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action"],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" },
+        "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 }, "action": { "const": "status" }
+      }
+    },
+    "Target": {
+      "type": "object", "additionalProperties": false, "required": ["deviceId", "hostname", "workspaceId"],
+      "properties": { "deviceId": { "$ref": "#/$defs/Id" }, "hostname": { "type": "string", "maxLength": 128 }, "workspaceId": { "$ref": "#/$defs/Id" } }
+    },
+    "WorkspaceRef": {
+      "type": "object", "additionalProperties": false, "required": ["id", "deviceId", "hostname", "label", "capabilities", "grantRevision", "workspaceRevision"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "deviceId": { "$ref": "#/$defs/Id" }, "hostname": { "type": "string", "maxLength": 128 },
+        "label": { "type": "string", "maxLength": 128 }, "capabilities": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/Capability" } },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 }, "workspaceRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "PeerState": {
+      "type": "object", "additionalProperties": false, "required": ["version", "deviceId", "hostname", "workspaces"],
+      "properties": { "version": { "const": 1 }, "deviceId": { "$ref": "#/$defs/Id" }, "hostname": { "type": "string", "maxLength": 128 },
+        "workspaces": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/WorkspaceRef" } } }
+    },
+    "Response": {
+      "type": "object", "additionalProperties": false, "required": ["version", "operationId", "target", "outcome", "action", "data"],
+      "oneOf": [
+        { "properties": { "action": { "const": "search" }, "outcome": { "const": "completed" }, "data": { "$ref": "#/$defs/SearchResult" } } },
+        { "properties": { "action": { "const": "read" }, "outcome": { "const": "completed" }, "data": { "$ref": "#/$defs/ReadResult" } } },
+        { "properties": { "action": { "enum": ["write", "restore"] }, "outcome": { "const": "completed" }, "data": { "$ref": "#/$defs/WriteResult" } } },
+        { "properties": { "action": { "const": "delete" }, "outcome": { "const": "completed" }, "data": { "$ref": "#/$defs/DeleteResult" } } },
+        { "properties": { "action": { "const": "status" }, "outcome": { "const": "completed" }, "data": { "$ref": "#/$defs/StatusResult" } } },
+        { "properties": { "action": { "enum": ["search", "read", "write", "delete", "restore"] }, "outcome": { "const": "unknown" }, "data": { "$ref": "#/$defs/StatusResult" } } }
+      ],
+      "properties": {
+        "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" }, "target": { "$ref": "#/$defs/Target" },
+        "outcome": { "type": "string", "enum": ["completed", "unknown"] },
+        "action": { "type": "string", "enum": ["search", "read", "write", "delete", "status", "restore"] },
+        "data": { "oneOf": [ { "$ref": "#/$defs/SearchResult" }, { "$ref": "#/$defs/ReadResult" }, { "$ref": "#/$defs/WriteResult" }, { "$ref": "#/$defs/DeleteResult" }, { "$ref": "#/$defs/StatusResult" } ] }
+      }
+    },
+    "SearchItem": {
+      "type": "object", "additionalProperties": false, "required": ["path", "size", "sha256", "match"],
+      "properties": { "path": { "$ref": "#/$defs/Path" }, "size": { "type": "integer", "minimum": 0, "maximum": 65536 }, "sha256": { "$ref": "#/$defs/Hash" }, "match": { "type": "string", "enum": ["filename", "content", "both"] } }
+    },
+    "SearchResult": {
+      "type": "object", "additionalProperties": false, "required": ["items", "hasMore", "nextCursor", "truncated", "scannedEntries", "scannedBytes", "workspaceRevision"],
+      "properties": {
+        "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/SearchItem" } },
+        "hasMore": { "type": "boolean" }, "nextCursor": { "type": ["string", "null"], "maxLength": 512 }, "truncated": { "type": "boolean" },
+        "scannedEntries": { "type": "integer", "minimum": 0, "maximum": 1000 }, "scannedBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "workspaceRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ReadResult": {
+      "type": "object", "additionalProperties": false, "required": ["path", "text", "size", "sha256", "offset", "byteLength", "truncated", "encoding"],
+      "properties": {
+        "path": { "$ref": "#/$defs/Path" }, "text": { "type": "string", "maxLength": 32768 }, "size": { "type": "integer", "minimum": 0, "maximum": 65536 },
+        "sha256": { "$ref": "#/$defs/Hash" }, "offset": { "type": "integer", "minimum": 0, "maximum": 65536 },
+        "byteLength": { "type": "integer", "minimum": 0, "maximum": 32768 }, "truncated": { "type": "boolean" }, "encoding": { "const": "utf8" }
+      }
+    },
+    "WriteResult": {
+      "type": "object", "additionalProperties": false, "required": ["path", "size", "sha256", "workspaceRevision"],
+      "properties": { "path": { "$ref": "#/$defs/Path" }, "size": { "type": "integer", "minimum": 0, "maximum": 65536 }, "sha256": { "$ref": "#/$defs/Hash" }, "workspaceRevision": { "type": "integer", "minimum": 1 } }
+    },
+    "DeleteResult": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256", "deleted", "restorable", "receiptId", "workspaceRevision"],
+      "properties": { "path": { "$ref": "#/$defs/Path" }, "sha256": { "$ref": "#/$defs/Hash" }, "deleted": { "const": true }, "restorable": { "const": true }, "receiptId": { "$ref": "#/$defs/OperationId" }, "workspaceRevision": { "type": "integer", "minimum": 1 } }
+    },
+    "DeleteUnconfirmed": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "operationId", "deviceId", "workspaceId", "grantRevision", "action", "path", "expectedSha256"],
+      "properties": { "version": { "const": 1 }, "operationId": { "$ref": "#/$defs/OperationId" }, "deviceId": { "$ref": "#/$defs/Id" },
+        "workspaceId": { "$ref": "#/$defs/Id" }, "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "action": { "const": "delete" }, "path": { "$ref": "#/$defs/Path" }, "expectedSha256": { "$ref": "#/$defs/Hash" } }
+    },
+    "GrantUpdate": {
+      "type": "object", "additionalProperties": false, "required": ["expectedRevision", "capabilities"],
+      "properties": { "expectedRevision": { "type": "integer", "minimum": 1, "maximum": 2147483646 },
+        "capabilities": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/Capability" } } }
+    },
+    "GrantRecord": {
+      "type": "object", "additionalProperties": false, "required": ["id", "sourceDeviceId", "workspaceId", "capabilities", "grantRevision"],
+      "properties": { "id": { "$ref": "#/$defs/Id" }, "sourceDeviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "capabilities": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/Capability" } }, "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 } }
+    },
+    "GrantResult": {
+      "type": "object", "additionalProperties": false, "required": ["id", "capabilities", "grantRevision"],
+      "properties": { "id": { "$ref": "#/$defs/Id" }, "capabilities": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/Capability" } },
+        "grantRevision": { "type": "integer", "minimum": 1, "maximum": 2147483647 } }
+    },
+    "OwnerState": {
+      "type": "object", "additionalProperties": false, "required": ["version", "configured", "workspaces", "peers"],
+      "properties": { "version": { "const": 1 }, "configured": { "type": "boolean" },
+        "workspaces": { "type": "array", "maxItems": 24, "items": { "$ref": "#/$defs/WorkspaceRef" } },
+        "grants": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/GrantRecord" } },
+        "peers": { "type": "array", "maxItems": 16, "items": {
+          "type": "object", "additionalProperties": false, "required": ["deviceId", "workspaceId", "available"],
+          "properties": { "deviceId": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "available": { "type": "boolean" }, "error": { "type": "string", "pattern": "^[A-Z_]{1,64}$" } }
+        } } }
+    },
+    "ConfirmationRequest": {
+      "type": "object", "additionalProperties": false, "required": ["sourceDeviceId", "request"],
+      "properties": { "sourceDeviceId": { "$ref": "#/$defs/Id" }, "request": { "$ref": "#/$defs/DeleteUnconfirmed" } }
+    },
+    "ConfirmationResult": {
+      "type": "object", "additionalProperties": false, "required": ["confirmationId", "expiresAt", "target", "path", "sha256"],
+      "properties": { "confirmationId": { "$ref": "#/$defs/OperationId" }, "expiresAt": { "type": "integer", "minimum": 1 }, "target": { "$ref": "#/$defs/Target" },
+        "path": { "$ref": "#/$defs/Path" }, "sha256": { "$ref": "#/$defs/Hash" } }
+    },
+    "RestoreRequest": {
+      "type": "object", "additionalProperties": false, "required": ["receiptId"],
+      "properties": { "receiptId": { "$ref": "#/$defs/OperationId" } }
+    },
+    "Error": {
+      "type": "object", "additionalProperties": false, "required": ["version", "error"],
+      "properties": { "version": { "const": 1 }, "error": { "type": "object", "additionalProperties": false, "required": ["code"],
+        "properties": { "code": { "type": "string", "pattern": "^[A-Z_]{1,64}$" } } } }
+    },
+    "StatusResult": {
+      "type": "object", "additionalProperties": false, "required": ["state"],
+      "properties": { "state": { "type": "string", "enum": ["completed", "unknown", "rejected", "not-found"] }, "code": { "type": "string", "maxLength": 64 } }
+    }
+  },
+  "x-limits": { "maxFileBytes": 65536, "maxReadBytes": 32768, "maxWriteBytes": 65536, "maxDepth": 8, "maxEntries": 1000, "maxScanBytes": 4194304, "maxScanMs": 1000, "maxPageItems": 100, "maxRequestBytes": 131072, "maxResponseBytes": 262144, "maxOperations": 1000, "confirmationTtlMs": 60000, "cursorTtlMs": 60000 },
+  "x-module-version": "0.1.0",
+  "x-engine-version": "0.1.0"
+}

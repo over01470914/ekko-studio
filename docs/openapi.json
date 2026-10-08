@@ -233,6 +233,10 @@
       "description": "Coding agent installation, config, and runs"
     },
     {
+      "name": "Personal Agent",
+      "description": "Receiver-owned bounded workspace file operations, explicit grants and durable operation receipts"
+    },
+    {
       "name": "Service Center",
       "description": "Studio service directory, personal favorites, health and local editor grants"
     },
@@ -18690,6 +18694,267 @@
         }
       }
     },
+    "/api/studio/personal-agent/delete-confirmations": {
+      "post": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Create delete-confirmations",
+        "description": "Active verified Studio account only. The receiver owner mints a target/path/operation-bound confirmation; a sender or MCP tool cannot mint its own.",
+        "operationId": "confirmPersonalAgentDelete",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Single-use, expiring confirmation bound to the exact file hash and payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalConfirmationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Active verified account or exact grant/capability required"
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "409": {
+            "description": "Expected revision/receipt conflict or unknown mutation state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalConfirmationRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/grants/{id}": {
+      "put": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Update :id",
+        "description": "Active verified reachable account owner; explicit owner-scoped capability revision. Revocation is enforced on every request including an open connection.",
+        "operationId": "updatePersonalAgentGrant",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New grant revision or a conflict when the expected revision is stale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalGrantResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Active verified account or exact grant/capability required"
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "409": {
+            "description": "Expected revision/receipt conflict or unknown mutation state"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalGrantUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/operations": {
+      "post": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Create operations",
+        "description": "Active verified Studio account; bounded search/read/write/delete/status against one exact approved target. Payload hash and operationId are durable receipts.",
+        "operationId": "executePersonalAgentOperation",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded, schema-validated result or an explicit unknown-state receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PersonalResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PersonalError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Active verified account or exact grant/capability required"
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "409": {
+            "description": "Expected revision/receipt conflict or unknown mutation state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/restore": {
+      "post": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Create restore",
+        "description": "Active verified Studio account owner only; restores one receipted soft delete to containment-checked private trash.",
+        "operationId": "restorePersonalAgentDelete",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restored file identity with real readback hash",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Active verified account or exact grant/capability required"
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "409": {
+            "description": "Expected revision/receipt conflict or unknown mutation state"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalRestoreRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/state": {
+      "get": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Get state",
+        "description": "Active verified Studio account; honest registered state only. Unconfigured or unreachable peers report unavailable instead of synthetic data.",
+        "operationId": "getPersonalAgentState",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped registered workspaces, grants and peer availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalOwnerState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Active verified account or exact grant/capability required"
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          }
+        }
+      }
+    },
     "/api/studio/petdex/asset": {
       "get": {
         "tags": [
@@ -26060,6 +26325,1066 @@
       }
     },
     "schemas": {
+      "PersonalId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "PersonalOperationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{15,63}$",
+        "minLength": 16,
+        "maxLength": 64
+      },
+      "PersonalHash": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$",
+        "minLength": 64,
+        "maxLength": 64
+      },
+      "PersonalPath": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "PersonalCapability": {
+        "type": "string",
+        "enum": [
+          "search",
+          "read",
+          "write",
+          "delete"
+        ]
+      },
+      "PersonalRequest": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PersonalSearch"
+          },
+          {
+            "$ref": "#/components/schemas/PersonalRead"
+          },
+          {
+            "$ref": "#/components/schemas/PersonalCreate"
+          },
+          {
+            "$ref": "#/components/schemas/PersonalOverwrite"
+          },
+          {
+            "$ref": "#/components/schemas/PersonalDelete"
+          },
+          {
+            "$ref": "#/components/schemas/PersonalStatus"
+          }
+        ]
+      },
+      "PersonalSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action",
+          "query",
+          "mode",
+          "limit"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "search"
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "filename",
+              "content",
+              "both"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      },
+      "PersonalRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action",
+          "path"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "read"
+          },
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32768
+          }
+        }
+      },
+      "PersonalCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action",
+          "path",
+          "mode",
+          "content"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "write"
+          },
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "mode": {
+            "const": "create"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 65536
+          }
+        }
+      },
+      "PersonalOverwrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action",
+          "path",
+          "mode",
+          "content",
+          "expectedSha256"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "write"
+          },
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "mode": {
+            "const": "overwrite"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "expectedSha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          }
+        }
+      },
+      "PersonalDelete": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action",
+          "path",
+          "expectedSha256",
+          "confirmationId"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "delete"
+          },
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "expectedSha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          },
+          "confirmationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          }
+        }
+      },
+      "PersonalStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "status"
+          }
+        }
+      },
+      "PersonalTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "deviceId",
+          "hostname",
+          "workspaceId"
+        ],
+        "properties": {
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "hostname": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          }
+        }
+      },
+      "PersonalWorkspaceRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "deviceId",
+          "hostname",
+          "label",
+          "capabilities",
+          "grantRevision",
+          "workspaceRevision"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "hostname": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "capabilities": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/PersonalCapability"
+            }
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "workspaceRevision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "PersonalPeerState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "deviceId",
+          "hostname",
+          "workspaces"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "hostname": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "workspaces": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/PersonalWorkspaceRef"
+            }
+          }
+        }
+      },
+      "PersonalResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "target",
+          "outcome",
+          "action",
+          "data"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "action": {
+                "const": "search"
+              },
+              "outcome": {
+                "const": "completed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/PersonalSearchResult"
+              }
+            }
+          },
+          {
+            "properties": {
+              "action": {
+                "const": "read"
+              },
+              "outcome": {
+                "const": "completed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/PersonalReadResult"
+              }
+            }
+          },
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "write",
+                  "restore"
+                ]
+              },
+              "outcome": {
+                "const": "completed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/PersonalWriteResult"
+              }
+            }
+          },
+          {
+            "properties": {
+              "action": {
+                "const": "delete"
+              },
+              "outcome": {
+                "const": "completed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/PersonalDeleteResult"
+              }
+            }
+          },
+          {
+            "properties": {
+              "action": {
+                "const": "status"
+              },
+              "outcome": {
+                "const": "completed"
+              },
+              "data": {
+                "$ref": "#/components/schemas/PersonalStatusResult"
+              }
+            }
+          },
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "search",
+                  "read",
+                  "write",
+                  "delete",
+                  "restore"
+                ]
+              },
+              "outcome": {
+                "const": "unknown"
+              },
+              "data": {
+                "$ref": "#/components/schemas/PersonalStatusResult"
+              }
+            }
+          }
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PersonalTarget"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "unknown"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "search",
+              "read",
+              "write",
+              "delete",
+              "status",
+              "restore"
+            ]
+          },
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PersonalSearchResult"
+              },
+              {
+                "$ref": "#/components/schemas/PersonalReadResult"
+              },
+              {
+                "$ref": "#/components/schemas/PersonalWriteResult"
+              },
+              {
+                "$ref": "#/components/schemas/PersonalDeleteResult"
+              },
+              {
+                "$ref": "#/components/schemas/PersonalStatusResult"
+              }
+            ]
+          }
+        }
+      },
+      "PersonalSearchItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "size",
+          "sha256",
+          "match"
+        ],
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "filename",
+              "content",
+              "both"
+            ]
+          }
+        }
+      },
+      "PersonalSearchResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "hasMore",
+          "nextCursor",
+          "truncated",
+          "scannedEntries",
+          "scannedBytes",
+          "workspaceRevision"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PersonalSearchItem"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "scannedEntries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "scannedBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4194304
+          },
+          "workspaceRevision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "PersonalReadResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "text",
+          "size",
+          "sha256",
+          "offset",
+          "byteLength",
+          "truncated",
+          "encoding"
+        ],
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 32768
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 32768
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "encoding": {
+            "const": "utf8"
+          }
+        }
+      },
+      "PersonalWriteResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "size",
+          "sha256",
+          "workspaceRevision"
+        ],
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          },
+          "workspaceRevision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "PersonalDeleteResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256",
+          "deleted",
+          "restorable",
+          "receiptId",
+          "workspaceRevision"
+        ],
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          },
+          "deleted": {
+            "const": true
+          },
+          "restorable": {
+            "const": true
+          },
+          "receiptId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "workspaceRevision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "PersonalDeleteUnconfirmed": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "operationId",
+          "deviceId",
+          "workspaceId",
+          "grantRevision",
+          "action",
+          "path",
+          "expectedSha256"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "operationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "action": {
+            "const": "delete"
+          },
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "expectedSha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          }
+        }
+      },
+      "PersonalGrantUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedRevision",
+          "capabilities"
+        ],
+        "properties": {
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "capabilities": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/PersonalCapability"
+            }
+          }
+        }
+      },
+      "PersonalGrantRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sourceDeviceId",
+          "workspaceId",
+          "capabilities",
+          "grantRevision"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "sourceDeviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "workspaceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "capabilities": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/PersonalCapability"
+            }
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          }
+        }
+      },
+      "PersonalGrantResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "capabilities",
+          "grantRevision"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "capabilities": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/PersonalCapability"
+            }
+          },
+          "grantRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          }
+        }
+      },
+      "PersonalOwnerState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "configured",
+          "workspaces",
+          "peers"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "workspaces": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+              "$ref": "#/components/schemas/PersonalWorkspaceRef"
+            }
+          },
+          "grants": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/PersonalGrantRecord"
+            }
+          },
+          "peers": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "deviceId",
+                "workspaceId",
+                "available"
+              ],
+              "properties": {
+                "deviceId": {
+                  "$ref": "#/components/schemas/PersonalId"
+                },
+                "workspaceId": {
+                  "$ref": "#/components/schemas/PersonalId"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string",
+                  "pattern": "^[A-Z_]{1,64}$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PersonalConfirmationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceDeviceId",
+          "request"
+        ],
+        "properties": {
+          "sourceDeviceId": {
+            "$ref": "#/components/schemas/PersonalId"
+          },
+          "request": {
+            "$ref": "#/components/schemas/PersonalDeleteUnconfirmed"
+          }
+        }
+      },
+      "PersonalConfirmationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "confirmationId",
+          "expiresAt",
+          "target",
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "confirmationId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "target": {
+            "$ref": "#/components/schemas/PersonalTarget"
+          },
+          "path": {
+            "$ref": "#/components/schemas/PersonalPath"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/PersonalHash"
+          }
+        }
+      },
+      "PersonalRestoreRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "receiptId"
+        ],
+        "properties": {
+          "receiptId": {
+            "$ref": "#/components/schemas/PersonalOperationId"
+          }
+        }
+      },
+      "PersonalError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "error"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^[A-Z_]{1,64}$"
+              }
+            }
+          }
+        }
+      },
+      "PersonalStatusResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "unknown",
+              "rejected",
+              "not-found"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
       "ServiceCenterManifest": {
         "title": "Studio Service Center manifest v1",
         "type": "object",

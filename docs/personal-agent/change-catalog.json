@@ -36,6 +36,70 @@
         "No native Desktop installer or physical remote device verification in PA00",
         "Native board supervisor receipt proves initial scheduled read, not future notification acknowledgement"
       ]
+    },
+    {
+      "id": "PA01",
+      "project": "ekko-personal-agent",
+      "date": "2026-10-08+08:00",
+      "revision": "protocol v1 / engine 0.1.0 / module 0.1.0; Studio binary remains upstream baseline 0.7.31",
+      "component": "receiver-owned bounded personal file operations, canonical protocol schema, Studio off-by-default server module and scoped MCP pilot",
+      "files": [
+        "packages/personal-assistant/package.json",
+        "packages/personal-assistant/protocol.schema.json",
+        "packages/personal-assistant/src/index.ts",
+        "packages/personal-assistant/src/protocol.ts",
+        "packages/personal-assistant/src/files.ts",
+        "packages/personal-assistant/src/receipts.ts",
+        "packages/personal-assistant/src/receiver.ts",
+        "packages/personal-assistant/src/http.ts",
+        "packages/personal-assistant/src/client.ts",
+        "packages/personal-assistant/src/private-config.ts",
+        "packages/personal-assistant/src/mcp.ts",
+        "packages/personal-assistant/src/node.ts",
+        "packages/server/src/modules/studio/extensions/personal-agent/index.ts",
+        "packages/server/src/modules/studio/extensions/personal-agent/host.ts",
+        "packages/server/src/modules/studio/extensions/personal-agent/service.ts",
+        "packages/server/src/modules/studio/extensions/personal-agent/controller.ts",
+        "packages/server/src/modules/studio/extensions/personal-agent/routes.ts",
+        "packages/server/src/modules/studio/extensions/personal-agent/openapi.mjs",
+        "packages/server/src/bootstrap/studio-extensions.ts",
+        "scripts/check-studio-extension-boundary.mjs",
+        "scripts/personal-agent-build.mjs",
+        "scripts/personal-agent-acceptance.mjs",
+        "scripts/personal-agent-fd-probe.mjs",
+        "tests/personal-assistant/engine.test.ts",
+        "tests/personal-assistant/transport.test.ts",
+        "tests/server/personal-agent-module.test.ts",
+        "tests/server/personal-agent-contract.test.ts",
+        "docs/openapi.json",
+        "docs/personal-agent/PA01-RECEIPT.md",
+        "docs/personal-agent/CHANGELOG.md",
+        "docs/personal-agent/change-catalog.json",
+        "package.json"
+      ],
+      "contracts": [
+        "packages/personal-assistant/protocol.schema.json (protocol v1, request/response/status/error DTOs and exact bounds)",
+        "docs/openapi.json /api/studio/personal-agent/* with operationId, security and 200/403/404/409 responses",
+        "modules/studio/extensions/registry contractVersion 1; module id personal-agent 0.1.0, registered off by default"
+      ],
+      "verification": [
+        "node node_modules/vitest/vitest.mjs run tests/personal-assistant/engine.test.ts tests/personal-assistant/transport.test.ts tests/server/personal-agent-module.test.ts tests/server/personal-agent-contract.test.ts --no-file-parallelism: 38 passed",
+        "node node_modules/vitest/vitest.mjs run tests/server/studio-extension-registry.test.ts tests/server/studio-extension-openapi.test.ts tests/server/studio-extension-boundary.test.ts: 8 passed (prior module routes unchanged)",
+        "npm run openapi:generate: 5 personal-agent endpoints, 31 Personal schemas, Service Center routes still present",
+        "node scripts/personal-agent-build.mjs: bundled dist/personal-assistant index/node/mcp",
+        "node scripts/personal-agent-acceptance.mjs: two real Node processes + official MCP client; real target readback created/restored = real two-process write; no credential in evidence",
+        "node node_modules/typescript/bin/tsc --noEmit -p packages/server/tsconfig.json: passed",
+        "npm run build: passed",
+        "python3 scripts/validate-personal-agent-catalog.py: must pass before commit",
+        "scripts/personal-lab.py status/stop: exact-owner stop, port released, production fingerprints unchanged"
+      ],
+      "limitations": [
+        "Same-machine loopback protocol acceptance only; no physical Windows, second host or remote-network verification",
+        "Receiver fails closed on win32; POSIX O_NOFOLLOW is not asserted as Windows escape safety",
+        "No UI, installer, central Naya connection or real user file touched; all fixtures are generated scratch",
+        "Filesystem/SQLite crash atomicity is not claimed: a crash mid-delete leaves the operation unknown for human inspection",
+        "MCP toolset is a scoped pilot config artifact; the default profile MCP configuration is unchanged"
+      ]
     }
   ]
 }
