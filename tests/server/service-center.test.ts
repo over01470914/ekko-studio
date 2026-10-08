@@ -4,11 +4,12 @@ import { join } from 'path'
 import { DatabaseSync } from 'node:sqlite'
 
 const specimen = (id = 'sample') => ({
-  id, name: 'Sample', description: 'A browser UI', url: 'https://example.org/',
-  icon: 'globe', category: 'Tools', tags: ['sample'], network: 'public', enabled: true, sortOrder: 1,
+  id, name: 'Sample', description: 'A browser UI', icon: 'globe', categoryId: null, nodeId: null,
+  tags: ['sample'], endpoints: [{ id: 'primary', label: 'Web', url: 'https://example.org/', network: 'public', login: 'unknown' }], defaultEndpointId: 'primary', enabled: true, sortOrder: 1,
 })
+const manifest2 = (services: ReturnType<typeof specimen>[]) => ({ schemaVersion: 2, categories: [], nodes: [], services })
 
-describe('Studio Service Center v1', () => {
+describe('Studio Service Center v2', () => {
   let home: string
   let db: DatabaseSync
   let users: typeof import('../../packages/server/src/modules/studio/repositories/users-store')
@@ -60,7 +61,7 @@ describe('Studio Service Center v1', () => {
   })
 
   it('validates the tracked manifest rules, rejects credential URLs and imports atomically', async () => {
-    expect(manifest.validateManifest({ schemaVersion: 1, services: [specimen()] }).services).toHaveLength(1)
+    expect(manifest.validateManifest(manifest2([specimen()])).services).toHaveLength(1)
     for (const bad of [
       'javascript:alert(1)', 'https://name:pass@example.org/',
       'https://example.org/?access_token=abc', 'https://example.org/?accessToken=abc',
@@ -112,25 +113,25 @@ describe('Studio Service Center v1', () => {
       'https://example.org/#access_token:fixture',
       'file:///etc/hosts', 'https://example.org/\n',
     ]) {
-      expect(() => manifest.validateService({ ...specimen(), url: bad }), `navigation URL ${bad}`).toThrow()
+      expect(() => manifest.validateService({ ...specimen(), endpoints: [{ ...specimen().endpoints[0], url: bad }] }), `navigation URL ${bad}`).toThrow()
       expect(() => manifest.validateService({ ...specimen(), healthUrl: bad }), `health URL ${bad}`).toThrow()
     }
     const benignKeys = ['view', 'category', 'tag', 'q', 'page', 'sort', 'lang',
       'id', 'name', 'filter', 'tab', 'ref', 'highlight']
     const benign = `https://example.org/?${benignKeys.map(key => `${key}=fixture`).join('&')}`
     expect(manifest.validateNavigationUrl(benign)).toBe(true)
-    expect(() => manifest.validateService({ ...specimen(), url: benign, healthUrl: benign })).not.toThrow()
+    expect(() => manifest.validateService({ ...specimen(), endpoints: [{ ...specimen().endpoints[0], url: benign }], healthUrl: benign })).not.toThrow()
     for (const anchor of ['#overview', '#/dashboard', '#/tools/status']) {
-      expect(() => manifest.validateService({ ...specimen(), url: `https://example.org/${anchor}`,
+      expect(() => manifest.validateService({ ...specimen(), endpoints: [{ ...specimen().endpoints[0], url: `https://example.org/${anchor}` }],
         healthUrl: `https://example.org/${anchor}` })).not.toThrow()
     }
     expect(manifest.validateNavigationUrl('https://example.org/?view=dashboard&sessionid=fixture')).toBe(false)
     expect(() => manifest.validateManifest({ schemaVersion: 2, services: [] })).toThrow()
-    expect(() => manifest.validateManifest({ schemaVersion: 1, services: [specimen(), specimen()] })).toThrow()
+    expect(() => manifest.validateManifest(manifest2([specimen(), specimen()]))).toThrow()
     expect(() => manifest.validateService({ ...specimen(), enabled: true, permission: 'editor' })).toThrow()
     const initial = await repository.saveService(0, specimen())
     expect(initial.revision).toBe(1)
-    await expect(repository.importManifest(1, { schemaVersion: 1, services: [specimen('new'), { ...specimen('bad'), url: 'data:text/html,x' }] }, {})).rejects.toThrow()
+    await expect(repository.importManifest(1, manifest2([specimen('new'), { ...specimen('bad'), endpoints: [{ ...specimen().endpoints[0], url: 'data:text/html,x' }] }]), {})).rejects.toThrow()
     expect(await repository.catalog()).toEqual(initial)
   })
 
@@ -140,14 +141,14 @@ describe('Studio Service Center v1', () => {
     expect(attempts.filter(result => result.status === 'fulfilled')).toHaveLength(1)
     expect(attempts.filter(result => result.status === 'rejected')).toHaveLength(1)
     expect((await repository.catalog()).revision).toBe(2)
-    const incoming = { schemaVersion: 1, services: [{ ...specimen(), name: 'Overwrite' }, specimen('four')] }
+    const incoming = manifest2([{ ...specimen(), name: 'Overwrite' }, specimen('four')])
     expect(repository.previewImport(await repository.catalog(), incoming).conflicts).toHaveLength(1)
     await expect(repository.importManifest(2, incoming, {})).rejects.toThrow()
-    const after = await repository.importManifest(2, incoming, { sample: 'keep' })
+    const after = await repository.importManifest(2, incoming, { 'services:sample': 'keep' })
     expect(after.services.find(service => service.id === 'sample')?.name).toBe('Sample')
     expect(after.services.map(service => service.id)).toContain('four')
     await expect(repository.deleteService(2, 'sample')).rejects.toMatchObject({ status: 409 })
-    const exported = { schemaVersion: after.schemaVersion, services: after.services }
+    const exported = { schemaVersion: after.schemaVersion, categories: after.categories, nodes: after.nodes, services: after.services }
     expect(manifest.validateManifest(exported)).toEqual(exported)
     expect(JSON.stringify(exported)).not.toMatch(/editorIds|favorites|revision|audit|approved/)
     vi.resetModules()

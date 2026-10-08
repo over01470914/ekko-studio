@@ -12,9 +12,9 @@ const tokens = tokenFile ? JSON.parse(readFileSync(tokenFile, 'utf8')) as Record
 const screenshotDir = process.env.SERVICE_CENTER_SCREENSHOT_DIR
 const id = `live-${randomUUID().slice(0, 8)}`
 const benignQuery = 'view=dashboard&category=tools&tag=sample&q=test&page=2&sort=name&lang=en&id=fixture&name=display&filter=enabled&tab=home&ref=docs&highlight=item'
-const service = { id, name: 'Live test service', category: 'Development', description: 'Preview acceptance',
-  tags: ['live'], url: `https://example.org/?${benignQuery}`, healthUrl: `https://example.org/?${benignQuery}`,
-  icon: 'globe', network: 'public', enabled: true, sortOrder: 0 }
+const service = { id, name: 'Live test service', categoryId: null, nodeId: null, description: 'Preview acceptance',
+  tags: ['live'], endpoints: [{ id: 'web', label: 'Web', url: `https://example.org/?${benignQuery}`, network: 'public', login: 'unknown' }], defaultEndpointId: 'web',
+  healthUrl: `https://example.org/?${benignQuery}`, icon: 'globe', enabled: true, sortOrder: 0 }
 
 const request = (baseURL: string, role: string, path: string, method = 'GET', body?: unknown) =>
   fetch(`${baseURL}/api/studio/service-center${path}`, { method, headers: {
@@ -47,7 +47,7 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
       'X-Goog-Credential', 'ssoTicket', 'sig%256Eature',
     ]) {
       const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
-        service: { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
+        service: field === 'url' ? { ...service, endpoints: [{ ...service.endpoints[0], url: `https://example.org/?${key}=fixture` }] } : { ...service, [field]: `https://example.org/?${key}=fixture` }, expectedRevision: ownerCatalog.revision,
       })
       expect(invalid.status, `${field} query key ${key}`).toBe(400)
     }
@@ -58,7 +58,7 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
       '#access_token%253Dfixture', '#access_token:fixture',
     ]) {
       const invalid = await request(base, 'sc-preview-owner', '/services', 'PUT', {
-        service: { ...service, [field]: `https://example.org/${fragment}` }, expectedRevision: ownerCatalog.revision,
+        service: field === 'url' ? { ...service, endpoints: [{ ...service.endpoints[0], url: `https://example.org/${fragment}` }] } : { ...service, [field]: `https://example.org/${fragment}` }, expectedRevision: ownerCatalog.revision,
       })
       expect(invalid.status, `${field} fragment ${fragment}`).toBe(400)
     }
@@ -68,7 +68,7 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   expect(added.status).toBe(200)
   const created = await added.json()
   expect(created.services.some((entry: { id: string }) => entry.id === id)).toBe(true)
-  expect(created.services.find((entry: { id: string, url: string }) => entry.id === id)?.url)
+  expect(created.services.find((entry: { id: string, endpoints: Array<{ url: string }> }) => entry.id === id)?.endpoints[0].url)
     .toBe(`https://example.org/?${benignQuery}`)
   expect(created.services.find((entry: { id: string }) => entry.id === id)?.healthUrl)
     .toBe(`https://example.org/?${benignQuery}`)
@@ -92,6 +92,20 @@ test('real JWT, catalog persistence, permission, mutation and revision conflict'
   expect((await request(base, 'sc-preview-owner', `/editors/${editorAccount.user.id}`, 'PUT', { granted: false })).status).toBe(200)
   expect((await request(base, 'sc-preview-editor', '/services', 'PUT', { service, expectedRevision: 0 })).status).toBe(403)
   expect((await request(base, 'sc-preview-owner', `/editors/${editorAccount.user.id}`, 'PUT', { granted: true })).status).toBe(200)
+
+  const beforeGroups = await (await request(base, 'sc-preview-editor', '/catalog')).json()
+  const category = { id: 'fixture-tools', name: 'Fixture tools', sortOrder: 2 }
+  const node = { id: 'fixture-host', name: 'Fixture host', description: 'Private test machine', sortOrder: 0 }
+  const addedCategory = await request(base, 'sc-preview-editor', '/categories', 'PUT', { category, expectedRevision: beforeGroups.revision })
+  expect(addedCategory.status).toBe(200)
+  const addedNode = await request(base, 'sc-preview-editor', '/nodes', 'PUT', { node, expectedRevision: (await addedCategory.json()).revision })
+  expect(addedNode.status).toBe(200)
+  const assigned = { ...service, name: 'Live test service updated', categoryId: category.id, nodeId: node.id,
+    endpoints: [service.endpoints[0], { id: 'host', label: 'Fixture host entry', url: 'http://127.0.0.1:22671/', network: 'local', login: 'required' }] }
+  const assignedResult = await request(base, 'sc-preview-editor', '/services', 'PUT', { service: assigned, expectedRevision: (await addedNode.json()).revision })
+  expect(assignedResult.status).toBe(200)
+  expect((await (await request(base, 'sc-preview-reader', '/catalog')).json()).services.find((entry: { id: string }) => entry.id === id))
+    .toMatchObject({ categoryId: category.id, nodeId: node.id, defaultEndpointId: 'web', endpoints: [{ id: 'web' }, { id: 'host', network: 'local' }] })
 })
 
 test('actual UI renders editor and reader roles at desktop and mobile sizes', async ({ page, browser, baseURL }) => {
@@ -106,13 +120,27 @@ test('actual UI renders editor and reader roles at desktop and mobile sizes', as
   await expect(serviceCenterEntry).toHaveAttribute('aria-current', 'page')
   expect(await rail.boundingBox()).toMatchObject({ x: 0, width: 64 })
   const card = page.locator(`[data-service-id="${id}"]`)
-  await expect(card.getByRole('link', { name: 'Live test service updated' })).toBeVisible()
+  await expect(card.getByRole('heading', { name: 'Live test service updated' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add service' })).toBeVisible()
   if (screenshotDir) {
     mkdirSync(screenshotDir, { recursive: true, mode: 0o700 })
     await page.screenshot({ path: resolve(screenshotDir, 'service-center-desktop.png'), fullPage: false, animations: 'disabled' })
   }
-  await card.getByRole('button', { name: 'Edit' }).click()
+  await card.getByRole('button', { name: 'Info' }).click()
+  const panel = page.getByRole('dialog', { name: 'Live test service updated' })
+  await expect(panel.locator('dd').filter({ hasText: 'Fixture host' }).first()).toBeVisible()
+  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-panel.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Label guide' }).click()
+  await expect(page.getByRole('dialog', { name: 'Label guide' }).getByText('Accessible on the deployment host only. Not your phone or browser device.')).toBeVisible()
+  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-legend.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Manage categories and locations' }).click()
+  await expect(page.getByRole('dialog').getByText('Fixture tools')).toBeVisible()
+  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-manager.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
+  await card.getByRole('button', { name: 'Info' }).click()
+  await page.getByRole('dialog', { name: 'Live test service updated' }).getByRole('button', { name: 'Edit' }).click()
   const editor = page.getByRole('dialog')
   await expect(editor.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Live test service updated')
   await expect.poll(() => editor.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
@@ -123,14 +151,34 @@ test('actual UI renders editor and reader roles at desktop and mobile sizes', as
   }
   await editor.getByRole('textbox', { name: 'Name', exact: true }).fill('Live test service from UI')
   await editor.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(card.getByRole('link', { name: 'Live test service from UI' })).toBeVisible()
+  await expect(card.getByRole('heading', { name: 'Live test service from UI' })).toBeVisible()
   const saved = await (await request(baseURL!, 'sc-preview-editor', '/catalog')).json()
-  expect(saved.services.find((entry: { id: string }) => entry.id === id)?.name).toBe('Live test service from UI')
+  expect(saved.services.find((entry: { id: string }) => entry.id === id)).toMatchObject({ name: 'Live test service from UI', categoryId: 'fixture-tools', nodeId: 'fixture-host', defaultEndpointId: 'web' })
+  await card.locator('.service-card__choice .n-select').click()
+  await page.locator('.n-base-select-option').filter({ hasText: 'Fixture host entry' }).click()
+  await expect(card.getByRole('link', { name: 'Open' })).toHaveAttribute('href', 'http://127.0.0.1:22671/')
+  await expect(card.getByText('Host only')).toBeVisible()
+  await card.getByRole('button', { name: 'Info' }).click()
+  await expect(page.getByRole('dialog', { name: 'Live test service from UI' }).getByText('Localhost means the deployment host, not your viewing device.')).toBeVisible()
+  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'service-center-panel-local.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } })
   await authenticate(mobile, tokens['sc-preview-reader'])
   await mobile.goto('/#/service-center')
-  await expect(mobile.locator(`[data-service-id="${id}"]`).getByRole('link', { name: 'Live test service from UI' })).toBeVisible()
+  await expect(mobile.locator(`[data-service-id="${id}"]`).getByRole('heading', { name: 'Live test service from UI' })).toBeVisible()
   await expect(mobile.getByRole('button', { name: 'Add service' })).toHaveCount(0)
   if (screenshotDir) await mobile.screenshot({ path: resolve(screenshotDir, 'service-center-mobile.png'), fullPage: true })
+  expect(await mobile.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await mobile.locator(`[data-service-id="${id}"]`).getByRole('button', { name: 'Info' }).click()
+  await expect(mobile.getByRole('dialog', { name: 'Live test service from UI' })).toBeVisible()
+  expect(await mobile.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  if (screenshotDir) await mobile.screenshot({ path: resolve(screenshotDir, 'service-center-mobile-panel.png'), animations: 'disabled' })
+  await mobile.keyboard.press('Escape')
+  const fixtureCategory = mobile.locator('.service-center__categories').getByRole('button', { name: 'Fixture tools' })
+  await fixtureCategory.focus()
+  await expect(fixtureCategory).toBeFocused()
+  await fixtureCategory.press('Enter')
+  await expect(fixtureCategory).toHaveAttribute('aria-current', 'page')
+  await expect(mobile.locator(`[data-service-id="${id}"]`)).toBeVisible()
   await mobile.close()
 })

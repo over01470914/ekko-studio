@@ -19023,16 +19023,39 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "schemaVersion",
                     "revision",
+                    "categories",
+                    "nodes",
                     "services",
                     "favorites",
                     "health",
                     "capabilities"
                   ],
                   "properties": {
+                    "schemaVersion": {
+                      "type": "integer",
+                      "enum": [
+                        2
+                      ]
+                    },
                     "revision": {
                       "type": "integer",
                       "minimum": 0
+                    },
+                    "categories": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceCentercategory"
+                      }
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "$ref": "#/components/schemas/ServiceCenternode"
+                      }
                     },
                     "services": {
                       "type": "array",
@@ -19118,6 +19141,126 @@
           },
           "404": {
             "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/categories": {
+      "put": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Update categories",
+        "description": "Module editor only; upsert category by stable ID and expected revision.",
+        "operationId": "saveServiceCenterCategory",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "category"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "category": {
+                    "$ref": "#/components/schemas/ServiceCentercategory"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/categories/{id}": {
+      "delete": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Delete :id",
+        "description": "Module editor only; explicitly reassign references to another category or null atomically.",
+        "operationId": "deleteServiceCenterCategory",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "reassignTo"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "reassignTo": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -19459,7 +19602,14 @@
                     "minimum": 0
                   },
                   "manifest": {
-                    "$ref": "#/components/schemas/ServiceCenterManifest"
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ServiceCenterManifest"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ServiceCenterLegacyManifest"
+                      }
+                    ]
                   },
                   "conflicts": {
                     "type": "object",
@@ -19469,7 +19619,8 @@
                         "keep",
                         "overwrite"
                       ]
-                    }
+                    },
+                    "description": "Entity-scoped keys: categories:id, nodes:id, services:id"
                   }
                 }
               }
@@ -19520,7 +19671,14 @@
                 ],
                 "properties": {
                   "manifest": {
-                    "$ref": "#/components/schemas/ServiceCenterManifest"
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ServiceCenterManifest"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ServiceCenterLegacyManifest"
+                      }
+                    ]
                   }
                 }
               }
@@ -19544,7 +19702,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Manifest v1",
+            "description": "Manifest v2",
             "content": {
               "application/json": {
                 "schema": {
@@ -19561,6 +19719,126 @@
           },
           "404": {
             "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/nodes": {
+      "put": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Update nodes",
+        "description": "Module editor only; upsert deployment node by stable ID and expected revision.",
+        "operationId": "saveServiceCenterNode",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "node"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "node": {
+                    "$ref": "#/components/schemas/ServiceCenternode"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/service-center/nodes/{id}": {
+      "delete": {
+        "tags": [
+          "Service Center"
+        ],
+        "summary": "Delete :id",
+        "description": "Module editor only; explicitly reassign references to another node or null atomically.",
+        "operationId": "deleteServiceCenterNode",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Module permission or active account required"
+          },
+          "409": {
+            "description": "Expected catalog revision mismatch or health target changed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "reassignTo"
+                ],
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "reassignTo": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -26060,8 +26338,352 @@
       }
     },
     "schemas": {
+      "ServiceCenterid": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "maxLength": 80
+      },
+      "ServiceCenterorder": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000000
+      },
+      "ServiceCentercategory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "sortOrder"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ServiceCenterid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "sortOrder": {
+            "$ref": "#/components/schemas/ServiceCenterorder"
+          }
+        }
+      },
+      "ServiceCenternode": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "description",
+          "sortOrder"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ServiceCenterid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "sortOrder": {
+            "$ref": "#/components/schemas/ServiceCenterorder"
+          }
+        }
+      },
+      "ServiceCenterendpoint": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "url",
+          "network",
+          "login"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ServiceCenterid"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "HTTP(S), allowlisted query keys and plain fragment; no credentials"
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "tailscale",
+              "lan",
+              "public",
+              "local"
+            ]
+          },
+          "login": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "required",
+              "none"
+            ]
+          }
+        }
+      },
       "ServiceCenterManifest": {
-        "title": "Studio Service Center manifest v1",
+        "title": "Studio Service Center manifest v2",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "categories",
+          "nodes",
+          "services"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              2
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/ServiceCentercategory"
+            }
+          },
+          "nodes": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/ServiceCenternode"
+            }
+          },
+          "services": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "description",
+                "icon",
+                "categoryId",
+                "nodeId",
+                "tags",
+                "endpoints",
+                "defaultEndpointId",
+                "enabled",
+                "sortOrder"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                  "maxLength": 80
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "icon": {
+                  "type": "string",
+                  "enum": [
+                    "globe",
+                    "server",
+                    "cloud",
+                    "tool",
+                    "database",
+                    "monitor",
+                    "folder",
+                    "shield"
+                  ]
+                },
+                "categoryId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceCenterid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "nodeId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceCenterid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "maxItems": 12,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "endpoints": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceCenterendpoint"
+                  }
+                },
+                "defaultEndpointId": {
+                  "$ref": "#/components/schemas/ServiceCenterid"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "sortOrder": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "healthUrl": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it"
+                },
+                "healthCheckEnabled": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ServiceCenterService": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "description",
+          "icon",
+          "categoryId",
+          "nodeId",
+          "tags",
+          "endpoints",
+          "defaultEndpointId",
+          "enabled",
+          "sortOrder"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 80
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "globe",
+              "server",
+              "cloud",
+              "tool",
+              "database",
+              "monitor",
+              "folder",
+              "shield"
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceCenterid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nodeId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceCenterid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 12,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          },
+          "endpoints": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/ServiceCenterendpoint"
+            }
+          },
+          "defaultEndpointId": {
+            "$ref": "#/components/schemas/ServiceCenterid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "healthUrl": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it"
+          },
+          "healthCheckEnabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ServiceCenterLegacyManifest": {
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -26108,11 +26730,6 @@
                   "type": "string",
                   "maxLength": 500
                 },
-                "url": {
-                  "type": "string",
-                  "maxLength": 2048,
-                  "description": "HTTP(S) navigation URL without userinfo; only allowlisted query keys and plain anchor/hash-path fragments (no parameters or encoded separators)"
-                },
                 "icon": {
                   "type": "string",
                   "enum": [
@@ -26126,11 +26743,6 @@
                     "shield"
                   ]
                 },
-                "category": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 80
-                },
                 "tags": {
                   "type": "array",
                   "maxItems": 12,
@@ -26140,15 +26752,6 @@
                     "minLength": 1,
                     "maxLength": 40
                   }
-                },
-                "network": {
-                  "type": "string",
-                  "enum": [
-                    "tailscale",
-                    "lan",
-                    "public",
-                    "local"
-                  ]
                 },
                 "enabled": {
                   "type": "boolean"
@@ -26165,99 +26768,28 @@
                 },
                 "healthCheckEnabled": {
                   "type": "boolean"
+                },
+                "category": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "HTTP(S), allowlisted query keys and plain fragment; no credentials"
+                },
+                "network": {
+                  "type": "string",
+                  "enum": [
+                    "tailscale",
+                    "lan",
+                    "public",
+                    "local"
+                  ]
                 }
               }
             }
-          }
-        }
-      },
-      "ServiceCenterService": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "name",
-          "description",
-          "url",
-          "icon",
-          "category",
-          "tags",
-          "network",
-          "enabled",
-          "sortOrder"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
-            "maxLength": 80
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 500
-          },
-          "url": {
-            "type": "string",
-            "maxLength": 2048,
-            "description": "HTTP(S) navigation URL without userinfo; only allowlisted query keys and plain anchor/hash-path fragments (no parameters or encoded separators)"
-          },
-          "icon": {
-            "type": "string",
-            "enum": [
-              "globe",
-              "server",
-              "cloud",
-              "tool",
-              "database",
-              "monitor",
-              "folder",
-              "shield"
-            ]
-          },
-          "category": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "tags": {
-            "type": "array",
-            "maxItems": 12,
-            "uniqueItems": true,
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 40
-            }
-          },
-          "network": {
-            "type": "string",
-            "enum": [
-              "tailscale",
-              "lan",
-              "public",
-              "local"
-            ]
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "sortOrder": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000000
-          },
-          "healthUrl": {
-            "type": "string",
-            "maxLength": 2048,
-            "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it"
-          },
-          "healthCheckEnabled": {
-            "type": "boolean"
           }
         }
       },

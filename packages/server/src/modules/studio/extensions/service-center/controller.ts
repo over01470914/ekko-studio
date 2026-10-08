@@ -28,7 +28,7 @@ export const listCatalog = handle(async ctx => {
   ctx.body = await directory.catalogFor(userId(ctx))
 })
 export const exportManifest = handle(async ctx => {
-  ctx.set('Content-Disposition', 'attachment; filename="service-center-manifest-v1.json"')
+  ctx.set('Content-Disposition', 'attachment; filename="service-center-manifest-v2.json"')
   ctx.body = await directory.manifestFor(userId(ctx))
 })
 export const save = handle(async ctx => {
@@ -38,6 +38,24 @@ export const save = handle(async ctx => {
 export const remove = handle(async ctx => {
   const body = bodyOf(ctx)
   ctx.body = await directory.deleteService(userId(ctx), revisionOf(body), idOf(ctx))
+})
+export const saveCategory = handle(async ctx => {
+  const body = bodyOf(ctx)
+  ctx.body = await directory.saveOrganization(userId(ctx), revisionOf(body), 'categories', body.category)
+})
+export const deleteCategory = handle(async ctx => {
+  const body = bodyOf(ctx)
+  if (!Object.hasOwn(body, 'reassignTo')) throw new ServiceCenterError('Explicit reassignment required')
+  ctx.body = await directory.deleteOrganization(userId(ctx), revisionOf(body), 'categories', idOf(ctx), body.reassignTo)
+})
+export const saveNode = handle(async ctx => {
+  const body = bodyOf(ctx)
+  ctx.body = await directory.saveOrganization(userId(ctx), revisionOf(body), 'nodes', body.node)
+})
+export const deleteNode = handle(async ctx => {
+  const body = bodyOf(ctx)
+  if (!Object.hasOwn(body, 'reassignTo')) throw new ServiceCenterError('Explicit reassignment required')
+  ctx.body = await directory.deleteOrganization(userId(ctx), revisionOf(body), 'nodes', idOf(ctx), body.reassignTo)
 })
 export const preview = handle(async ctx => {
   const body = bodyOf(ctx)

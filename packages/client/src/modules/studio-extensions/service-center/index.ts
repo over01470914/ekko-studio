@@ -3,8 +3,8 @@ import { installServiceCenterClientHost } from './host'
 import { serviceCenterMessages } from './messages'
 
 export const serviceCenterClientExtension: ClientExtensionSpec = {
-  id: 'service-center', version: '1.1.0',
-  capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants'],
+  id: 'service-center', version: '2.0.0',
+  capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants', 'taxonomy', 'multi-entry'],
   initialize(host) {
     const dispose = installServiceCenterClientHost(host)
     return {

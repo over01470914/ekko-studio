@@ -4,9 +4,9 @@ import { serviceCenterRoutes } from './routes'
 
 export function serviceCenterExtension(host: ServiceCenterHost): ServerExtensionSpec {
   return {
-    id: 'service-center', version: '1.1.0', contractVersion: 1,
+    id: 'service-center', version: '2.0.0', contractVersion: 1,
     apiBase: '/api/studio/service-center',
-    capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants'],
+    capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants', 'taxonomy', 'multi-entry'],
     initialize() {
       const dispose = installServiceCenterHost(host)
       return { routes: serviceCenterRoutes, dispose }

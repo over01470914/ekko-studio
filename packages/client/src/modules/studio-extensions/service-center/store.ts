@@ -4,7 +4,7 @@ import { onServiceCenterReset } from './host'
 import * as api from './api'
 import type { CatalogResponse, HealthResult, ServiceEntry } from './api'
 
-const empty = (): CatalogResponse => ({ revision: 0, services: [], favorites: [], health: {}, capabilities: { canManageServices: false, canManageEditors: false } })
+const empty = (): CatalogResponse => ({ schemaVersion: 2, revision: 0, categories: [], nodes: [], services: [], favorites: [], health: {}, capabilities: { canManageServices: false, canManageEditors: false } })
 export const useServiceCenterStore = defineStore('serviceCenter', () => {
   const catalog = ref<CatalogResponse>(empty())
   const loading = ref(false)

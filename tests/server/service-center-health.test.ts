@@ -3,7 +3,8 @@ import { createServer, type Server } from 'http'
 import { mkdtemp, rm } from 'fs/promises'
 import { join } from 'path'
 
-const sample = (id: string, healthUrl: string) => ({ id, name: 'Test', description: '', url: 'https://example.org/', icon: 'globe', category: 'Tests', tags: [], network: 'local' as const, enabled: true, sortOrder: 0, healthUrl, healthCheckEnabled: true })
+const sample = (id: string, healthUrl: string) => ({ id, name: 'Test', description: '', icon: 'globe', categoryId: null, nodeId: null, tags: [],
+  endpoints: [{ id: 'primary', label: 'Web', url: 'https://example.org/', network: 'public' as const, login: 'unknown' as const }], defaultEndpointId: 'primary', enabled: true, sortOrder: 0, healthUrl, healthCheckEnabled: true })
 
 describe('Service Center bounded health checks', () => {
   let server: Server

@@ -22,13 +22,23 @@ export async function catalogFor(actor: ServiceCenterActor) {
   const services = rights.canManageServices ? snapshot.services : snapshot.services.filter(service => service.enabled)
   const favorites = await registry.getFavorites(actor.id)
   const health = Object.fromEntries(await Promise.all(services.map(async service => [service.id, await healthFor(service)] as const)))
-  return { revision: snapshot.revision, services, favorites: favorites.filter(key => services.some(service => service.id === key)), health, capabilities: rights }
+  return { schemaVersion: 2, revision: snapshot.revision, categories: snapshot.categories, nodes: snapshot.nodes,
+    services, favorites: favorites.filter(key => services.some(service => service.id === key)), health, capabilities: rights }
 }
 
 export async function manifestFor(actor: ServiceCenterActor) {
   const rights = await capabilities(actor)
   const snapshot = await registry.catalog()
-  return { schemaVersion: 1, services: rights.canManageServices ? snapshot.services : snapshot.services.filter(service => service.enabled) }
+  return { schemaVersion: 2, categories: snapshot.categories, nodes: snapshot.nodes,
+    services: rights.canManageServices ? snapshot.services : snapshot.services.filter(service => service.enabled) }
+}
+export async function saveOrganization(actor: ServiceCenterActor, revision: unknown, kind: 'categories' | 'nodes', item: unknown) {
+  await requireEditor(actor)
+  return registry.saveOrganization(revision as number, kind, item)
+}
+export async function deleteOrganization(actor: ServiceCenterActor, revision: unknown, kind: 'categories' | 'nodes', id: string, replacement: unknown) {
+  await requireEditor(actor)
+  return registry.deleteOrganization(revision as number, kind, id, replacement)
 }
 
 export async function saveService(actor: ServiceCenterActor, revision: unknown, service: unknown) {

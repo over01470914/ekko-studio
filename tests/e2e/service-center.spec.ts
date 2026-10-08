@@ -1,19 +1,25 @@
 import { expect, test, type Page } from '@playwright/test'
+import { mkdir } from 'fs/promises'
+import { resolve } from 'path'
 import { authenticate, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
 
-const sample = (id = 'sample', name = 'Sample Tool') => ({ id, name, description: 'A browser tool', url: 'https://example.org/tool', icon: 'globe', category: 'Tools', tags: ['search'], network: 'public', enabled: true, sortOrder: 0 })
+const sample = (id = 'sample', name = 'Sample Tool') => ({ id, name, description: 'A browser tool', icon: 'globe', categoryId: 'tools', nodeId: null, tags: ['search'],
+  endpoints: [{ id: 'primary', label: 'Web', url: 'https://example.org/tool', network: 'public', login: 'unknown' }], defaultEndpointId: 'primary', enabled: true, sortOrder: 0 })
+const legacySample = (id = 'imported', name = 'Imported Tool') => ({ id, name, description: 'A browser tool', url: 'https://example.org/tool', icon: 'globe', category: 'Tools', tags: ['search'], network: 'public', enabled: true, sortOrder: 0 })
 
 type Service = ReturnType<typeof sample>
 async function directory(page: Page, editor: boolean) {
   let revision = 1
   let services: Service[] = [sample()]
+  let categories = [{ id: 'tools', name: 'Tools', sortOrder: 0 }]
+  let nodes: Array<{ id: string; name: string; description: string; sortOrder: number }> = []
   let favorites: string[] = []
   let editorIds: number[] = []
   let failNextSave = false
   const requests: Array<{ method: string; path: string; body: any }> = []
   await page.route('**/api/studio/extensions', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
-    contractVersion: 1, extensions: [{ id: 'service-center', version: '1.1.0', apiBase: '/api/studio/service-center',
-      capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants'] }],
+    contractVersion: 1, extensions: [{ id: 'service-center', version: '2.0.0', apiBase: '/api/studio/service-center',
+      capabilities: ['directory', 'favorites', 'health', 'import-export', 'editor-grants', 'taxonomy', 'multi-entry'] }],
   }) }))
   await page.route('**/api/studio/service-center/**', async route => {
     const request = route.request()
@@ -22,8 +28,8 @@ async function directory(page: Page, editor: boolean) {
     const body = request.postDataJSON() || {}
     requests.push({ method, path, body })
     const reply = (json: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(json) })
-    if (method === 'GET' && path === '/catalog') return reply({ revision, services: editor ? services : services.filter(service => service.enabled), favorites, health: {}, capabilities: { canManageServices: editor, canManageEditors: editor } })
-    if (method === 'GET' && path === '/manifest') return reply({ schemaVersion: 1, services: editor ? services : services.filter(service => service.enabled) })
+    if (method === 'GET' && path === '/catalog') return reply({ schemaVersion: 2, revision, categories, nodes, services: editor ? services : services.filter(service => service.enabled), favorites, health: {}, capabilities: { canManageServices: editor, canManageEditors: editor } })
+    if (method === 'GET' && path === '/manifest') return reply({ schemaVersion: 2, categories, nodes, services: editor ? services : services.filter(service => service.enabled) })
     if (method === 'GET' && path === '/editors') return reply({ editorIds })
     if (method === 'PUT' && path.startsWith('/editors/')) { editorIds = body.granted ? [2] : []; return reply({ editorIds }) }
     if (!editor && !path.startsWith('/favorites/') && !path.startsWith('/health/')) return reply({ error: 'Service Center editor required' }, 403)
@@ -34,15 +40,20 @@ async function directory(page: Page, editor: boolean) {
       if (body.expectedRevision !== revision) return reply({ error: 'Catalog changed' }, 409)
       services = services.filter(service => service.id !== body.service.id).concat(body.service)
       revision++
-      return reply({ revision, services })
+      return reply({ schemaVersion: 2, revision, categories, nodes, services })
     }
     if (method === 'DELETE' && path.startsWith('/services/')) {
-      services = services.filter(service => service.id !== path.split('/').at(-1)); revision++; return reply({ revision, services })
+      services = services.filter(service => service.id !== path.split('/').at(-1)); revision++; return reply({ schemaVersion: 2, revision, categories, nodes, services })
     }
-    if (method === 'POST' && path === '/import/preview') return reply({ revision, count: body.manifest.services.length,
-      newIds: body.manifest.services.filter((item: Service) => !services.some(existing => existing.id === item.id)).map((item: Service) => item.id),
-      conflicts: body.manifest.services.filter((item: Service) => services.some(existing => existing.id === item.id)).map((item: Service) => ({ id: item.id, current: services.find(existing => existing.id === item.id), incoming: item })) })
-    if (method === 'POST' && path === '/import/confirm') { services = services.concat(body.manifest.services.filter((item: Service) => !services.some(existing => existing.id === item.id))); revision++; return reply({ revision }) }
+    if (method === 'POST' && path === '/import/preview') return reply({ revision, sourceSchemaVersion: body.manifest.schemaVersion, count: body.manifest.services.length,
+      newIds: { categories: [], nodes: [], services: body.manifest.services.filter((item: Service) => !services.some(existing => existing.id === item.id)).map((item: Service) => item.id) }, references: [],
+      conflicts: body.manifest.services.filter((item: Service) => services.some(existing => existing.id === item.id)).map((item: Service) => ({ key: `services:${item.id}`, entity: 'services', id: item.id, current: services.find(existing => existing.id === item.id), incoming: item })) })
+    if (method === 'POST' && path === '/import/confirm') { services = services.concat(body.manifest.services.filter((item: Service) => !services.some(existing => existing.id === item.id)).map((item: Service & { category?: string; url?: string; network?: string }) => 'url' in item ? {
+      ...sample(item.id, item.name), description: item.description, tags: item.tags, enabled: item.enabled, sortOrder: item.sortOrder,
+      endpoints: [{ ...sample().endpoints[0], url: item.url!, network: item.network! }],
+    } : item)); revision++; return reply({ schemaVersion: 2, revision, categories, nodes, services }) }
+    if (method === 'PUT' && path === '/categories') { categories = categories.filter(item => item.id !== body.category.id).concat(body.category); revision++; return reply({ schemaVersion: 2, revision, categories, nodes, services }) }
+    if (method === 'PUT' && path === '/nodes') { nodes = nodes.filter(item => item.id !== body.node.id).concat(body.node); revision++; return reply({ schemaVersion: 2, revision, categories, nodes, services }) }
     return reply({ error: 'Unexpected request' }, 500)
   })
   await page.route('https://example.org/tool', route => route.fulfill({ status: 200, body: 'destination opened' }))
@@ -79,7 +90,7 @@ test('sidebar, directory, search, categories, favorites and exact safe new tab f
   await expect(page.locator('[data-service-id="sample"]')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add service' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Editors' })).toHaveCount(0)
-  const link = page.locator('[data-service-id="sample"] a.service-card__link')
+  const link = page.locator('[data-service-id="sample"] a.service-card__open')
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   await expect(link).toHaveAttribute('href', 'https://example.org/tool')
   const popup = context.waitForEvent('page')
@@ -112,15 +123,14 @@ test('editor saves to the same catalog, imports and exports through the runtime 
   const modal = page.getByRole('dialog')
   await modal.getByRole('textbox', { name: 'Stable ID' }).fill('added')
   await modal.getByRole('textbox', { name: 'Name', exact: true }).fill('Added Tool')
-  await modal.getByRole('textbox', { name: 'Web address' }).fill('https://example.org/tool')
-  await modal.getByRole('textbox', { name: 'Category', exact: true }).fill('Tools')
+  await modal.getByRole('textbox', { name: /Web address/ }).fill('https://example.org/tool')
   await modal.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('[data-service-id="added"]')).toBeVisible()
   expect(api.requests.some(request => request.path === '/services' && request.body.expectedRevision === 1)).toBe(true)
   await page.getByRole('button', { name: 'Export JSON' }).click()
   await expect.poll(() => api.requests.some(request => request.path === '/manifest')).toBe(true)
   await page.getByRole('button', { name: 'Import JSON' }).click()
-  await page.locator('input[type="file"]').setInputFiles({ name: 'service-center.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ schemaVersion: 1, services: [sample('imported', 'Imported Tool')] })) })
+  await page.locator('input[type="file"]').setInputFiles({ name: 'service-center.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ schemaVersion: 1, services: [legacySample()] })) })
   await page.getByRole('button', { name: 'Preview import' }).click()
   await expect(page.getByText(/1 entries: 1 new/)).toBeVisible()
   await page.getByRole('button', { name: 'Confirm import' }).click()
@@ -138,14 +148,16 @@ test('editing, disabling, stale-write failure and super-admin grant controls', a
   await page.goto('/#/service-center')
   const card = page.locator('[data-service-id="sample"]')
   await expect(card).toBeVisible()
-  await card.getByRole('button', { name: 'Edit' }).click()
+  await card.getByRole('button', { name: 'Info' }).click()
+  await page.getByRole('dialog', { name: 'Sample Tool' }).getByRole('button', { name: 'Edit' }).click()
   const modal = page.getByRole('dialog')
   await modal.getByRole('textbox', { name: 'Name', exact: true }).fill('Renamed Tool')
   await modal.getByRole('switch').first().click()
   await modal.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(card.getByRole('link', { name: 'Renamed Tool' })).toBeVisible()
+  await expect(card.getByRole('heading', { name: 'Renamed Tool' })).toBeVisible()
   expect(api.services().find(service => service.id === 'sample')?.enabled).toBe(false)
-  await card.getByRole('button', { name: 'Edit' }).click()
+  await card.getByRole('button', { name: 'Info' }).click()
+  await page.getByRole('dialog', { name: 'Renamed Tool' }).getByRole('button', { name: 'Edit' }).click()
   api.failSave()
   await modal.getByRole('textbox', { name: 'Name', exact: true }).fill('Not saved')
   await modal.getByRole('button', { name: 'Save', exact: true }).click()
@@ -158,4 +170,53 @@ test('editing, disabling, stale-write failure and super-admin grant controls', a
   await permissions.getByRole('button', { name: 'Grant editing' }).click()
   await expect(permissions.getByRole('button', { name: 'Revoke editing' })).toBeVisible()
   expect(api.requests.some(request => request.path === '/editors/2' && request.body.granted === true)).toBe(true)
+})
+
+test('category tabs, multi-entrance choice, network reachability, panel focus and organization editing', async ({ page }) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await mockHermesApi(page)
+  const api = await directory(page, true)
+  api.setServices([{ ...sample(), endpoints: [sample().endpoints[0], { id: 'host', label: 'Host', url: 'http://127.0.0.1:9000/', network: 'local', login: 'required' }] }])
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/#/service-center')
+  const card = page.locator('[data-service-id="sample"]')
+  await expect(card).toBeVisible()
+  await expect(page.locator('.studio-navigation-rail').first()).toBeVisible()
+  await expect(page.locator('.service-center__categories button[aria-current="page"]')).toHaveText('All categories')
+  await page.getByRole('navigation', { name: 'Category' }).getByRole('button', { name: 'Tools' }).click()
+  await expect(card).toBeVisible()
+  await page.getByRole('navigation', { name: 'Category' }).getByRole('button', { name: 'All categories' }).click()
+  const open = card.getByRole('link', { name: 'Open' })
+  await expect(open).toHaveAttribute('href', 'https://example.org/tool')
+  await card.getByText('Web', { exact: true }).click()
+  await page.locator('.n-base-select-option').filter({ hasText: 'Host' }).click()
+  await expect(open).toHaveAttribute('href', 'http://127.0.0.1:9000/')
+  await expect(card.getByText(/Host only/)).toBeVisible()
+  await expect(card.getByText(/Login required/)).toBeVisible()
+  const info = card.getByRole('button', { name: 'Info' })
+  await info.focus()
+  await info.click()
+  const panel = page.getByRole('dialog', { name: 'Sample Tool' })
+  await expect(panel.getByText(/Localhost means the deployment host/)).toBeVisible()
+  await expect(panel.getByText(/backend check does not verify browser reachability/i)).toBeVisible()
+  const screenshotDir = process.env.SERVICE_CENTER_SCREENSHOT_DIR
+  if (screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true, mode: 0o700 })
+    await page.screenshot({ path: resolve(screenshotDir, 'schema2-info-desktop.png'), animations: 'disabled' })
+  }
+  await page.keyboard.press('Escape')
+  await expect(panel).toHaveCount(0)
+  await expect(info).toBeFocused()
+  await page.getByRole('button', { name: 'Manage categories and locations' }).click()
+  const manager = page.getByRole('dialog')
+  await manager.getByRole('button', { name: 'Locations' }).click()
+  await manager.getByRole('textbox', { name: /Stable ID/ }).fill('mini')
+  await manager.getByRole('textbox', { name: /^Name/ }).fill('Mac mini')
+  await manager.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(manager.getByText('Mac mini')).toBeVisible()
+  expect(api.requests.some(request => request.path === '/nodes' && request.body.expectedRevision === 2)).toBe(true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.keyboard.press('Escape')
+  await expect(card).toBeVisible()
+  if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, 'schema2-mobile.png'), fullPage: true, animations: 'disabled' })
 })

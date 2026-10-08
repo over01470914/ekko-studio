@@ -20,7 +20,7 @@ const shared = new Set([
   'scripts/check-studio-extension-boundary.mjs', 'docs/openapi.json',
   'docs/harness/studio-extensions.md',
 ])
-const tests = /^(tests\/(client\/(service-center|studio-extension-registry|i18n-coverage)\.test\.ts|server\/(service-center|service-center-health|studio-extension-registry|studio-extension-openapi|studio-extension-boundary)\.test\.ts|e2e\/(service-center|service-center-live|fixtures)\.(spec\.)?ts|helpers\/service-center-preview\.ts))$/
+const tests = /^(tests\/(client\/(service-center(?:-[a-z]+)?|studio-extension-registry|i18n-coverage)\.test\.ts|server\/(service-center(?:-[a-z]+)?|studio-extension-registry|studio-extension-openapi|studio-extension-boundary)\.test\.ts|e2e\/(service-center|service-center-live|fixtures)\.(spec\.)?ts|helpers\/service-center-preview\.ts))$/
 export function allowedChangedPath(path) {
   return moduleRoots.some(root => path.startsWith(root)) || path.startsWith('docs/service-center/') ||
     shared.has(path) || tests.test(path)
@@ -52,7 +52,7 @@ export function checkRepository() {
     readFileSync(path).toString('utf8') !== execFileSync('git', ['show', `${upstream}:${path}`], { encoding: 'utf8' }))
   if (mismatches.length) throw new Error(`Upstream equality failed: ${mismatches.join(', ')}`)
   if (JSON.parse(readFileSync('package.json', 'utf8')).version !== '0.7.31') throw new Error('Root version differs from upstream 0.7.31')
-  if (JSON.parse(readFileSync('packages/server/src/modules/studio/extensions/service-center/manifest.schema.json', 'utf8')).properties.schemaVersion.const !== 1) throw new Error('Manifest schemaVersion changed')
+  if (JSON.parse(readFileSync('packages/server/src/modules/studio/extensions/service-center/manifest.schema.json', 'utf8')).properties.schemaVersion.const !== 2) throw new Error('Manifest schemaVersion must be 2')
   const violations = changed.filter(path => moduleRoots.some(root => path.startsWith(root)) && existsSync(path))
     .flatMap(path => moduleImportViolations(path, readFileSync(path, 'utf8')))
   if (violations.length) throw new Error(violations.join('\n'))

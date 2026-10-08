@@ -1,26 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ekkostudio.xyz/schemas/service-center-manifest-v1.json",
-  "title": "Studio Service Center manifest v1",
+  "$id": "https://ekkostudio.xyz/schemas/service-center-manifest-v2.json",
+  "title": "Studio Service Center manifest v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "services"],
+  "required": ["schemaVersion", "categories", "nodes", "services"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
+    "categories": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/category" } },
+    "nodes": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/node" } },
     "services": {
       "type": "array", "maxItems": 200,
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "name", "description", "url", "icon", "category", "tags", "network", "enabled", "sortOrder"],
+        "required": ["id", "name", "description", "icon", "categoryId", "nodeId", "tags", "endpoints", "defaultEndpointId", "enabled", "sortOrder"],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 80 },
           "name": { "type": "string", "minLength": 1, "maxLength": 100 },
           "description": { "type": "string", "maxLength": 500 },
-          "url": { "type": "string", "maxLength": 2048, "description": "HTTP(S) navigation URL without userinfo; only allowlisted query keys and plain anchor/hash-path fragments (no parameters or encoded separators)" },
           "icon": { "type": "string", "enum": ["globe", "server", "cloud", "tool", "database", "monitor", "folder", "shield"] },
-          "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "categoryId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+          "nodeId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
           "tags": { "type": "array", "maxItems": 12, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 40 } },
-          "network": { "type": "string", "enum": ["tailscale", "lan", "public", "local"] },
+          "endpoints": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/endpoint" } },
+          "defaultEndpointId": { "$ref": "#/$defs/id" },
           "enabled": { "type": "boolean" },
           "sortOrder": { "type": "integer", "minimum": 0, "maximum": 1000000 },
           "healthUrl": { "type": "string", "maxLength": 2048, "description": "Server-side GET target with the same allowlisted query keys and plain fragments; import does not approve it" },
@@ -28,5 +31,12 @@
         }
       }
     }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 80 },
+    "order": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "category": { "type": "object", "additionalProperties": false, "required": ["id", "name", "sortOrder"], "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string", "minLength": 1, "maxLength": 80 }, "sortOrder": { "$ref": "#/$defs/order" } } },
+    "node": { "type": "object", "additionalProperties": false, "required": ["id", "name", "description", "sortOrder"], "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string", "minLength": 1, "maxLength": 80 }, "description": { "type": "string", "maxLength": 500 }, "sortOrder": { "$ref": "#/$defs/order" } } },
+    "endpoint": { "type": "object", "additionalProperties": false, "required": ["id", "label", "url", "network", "login"], "properties": { "id": { "$ref": "#/$defs/id" }, "label": { "type": "string", "minLength": 1, "maxLength": 80 }, "url": { "type": "string", "maxLength": 2048, "description": "HTTP(S), allowlisted query keys and plain fragment; no credentials" }, "network": { "type": "string", "enum": ["tailscale", "lan", "public", "local"] }, "login": { "type": "string", "enum": ["unknown", "required", "none"] } } }
   }
 }
