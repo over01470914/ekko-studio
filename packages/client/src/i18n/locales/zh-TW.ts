@@ -1740,6 +1740,9 @@ export default {
   // 看板
   kanban: {
     notifications: {
+      empty: '尚無任務動態',
+      history: '較早的動態（{count}）',
+      subscriptions: '訂閱管理（{count}）',
       "title": "任務通知",
       "unsubscribe": "取消訂閱",
       "createFromSession": "從此 session 建立任務",

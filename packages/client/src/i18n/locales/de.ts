@@ -328,6 +328,9 @@ export default {
   },
   kanban: {
     notifications: {
+      empty: 'Noch keine Aufgabenaktualisierungen',
+      history: 'Frühere Updates ({count})',
+      subscriptions: 'Abonnements ({count})',
       "title": "Aufgabenbenachrichtigungen",
       "unsubscribe": "Abbestellen",
       "createFromSession": "Aufgabe aus dieser Sitzung erstellen",

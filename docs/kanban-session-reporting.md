@@ -40,6 +40,8 @@ A backend restart recovers pending/running requests with their durable identitie
 
 Notifications have their own Studio tables and are rendered as a separate session-page overlay; they never become user/assistant transcript messages and consume no model tokens. Actual diagnostic replies use the ordinary message persistence and session broadcast path, so they survive navigation and reload. Turning off diagnostics/unsubscribing suppresses queued work at execution-time checks; it does not interrupt an already-running report.
 
+The session page uses a compact notification trigger and a secondary new-task action. The notification count is the available history count, not an unread count. Opening its bounded popover does not resize the chat. Updates are grouped by board and task, newest first; summaries, earlier updates and subscription management expand on demand. Switching sessions closes the popover. This presentation does not mark notices as read, delete history or change diagnostic opt-in.
+
 ## Verification and rollout
 
 Tests use isolated Studio state/native fixtures and mocked model execution. The feature does not infer task success from an agent turn ending. Production deployment must integrate this branch, rebuild/restart Studio at a safe point, and validate an opted-in test task in its original session. Do not run production model diagnostics as part of unit/browser tests.

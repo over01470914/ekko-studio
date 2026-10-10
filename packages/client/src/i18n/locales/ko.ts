@@ -328,6 +328,9 @@ export default {
   },
   kanban: {
     notifications: {
+      empty: '아직 작업 업데이트가 없습니다',
+      history: '이전 업데이트 ({count})',
+      subscriptions: '구독 관리 ({count})',
       "title": "작업 알림",
       "unsubscribe": "구독 취소",
       "createFromSession": "이 세션에서 작업 만들기",

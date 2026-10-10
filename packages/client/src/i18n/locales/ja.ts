@@ -328,6 +328,9 @@ export default {
   },
   kanban: {
     notifications: {
+      empty: 'タスクの更新はありません',
+      history: '以前の更新（{count}）',
+      subscriptions: '購読管理（{count}）',
       "title": "タスク通知",
       "unsubscribe": "購読解除",
       "createFromSession": "このセッションからタスクを作成",

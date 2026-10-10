@@ -1706,6 +1706,9 @@ export default {
   // Kanban
   kanban: {
     notifications: {
+      empty: 'No task updates yet',
+      history: 'Earlier updates ({count})',
+      subscriptions: 'Subscriptions ({count})',
       "title": "Task notifications",
       "unsubscribe": "Unsubscribe",
       "createFromSession": "Create task from this session",

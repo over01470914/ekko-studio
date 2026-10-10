@@ -1745,6 +1745,9 @@ export default {
   // Kanban
   kanban: {
     notifications: {
+      empty: 'لا توجد تحديثات للمهام بعد',
+      history: 'التحديثات السابقة ({count})',
+      subscriptions: 'الاشتراكات ({count})',
       "title": "إشعارات المهام",
       "unsubscribe": "إلغاء الاشتراك",
       "createFromSession": "إنشاء مهمة من هذه الجلسة",

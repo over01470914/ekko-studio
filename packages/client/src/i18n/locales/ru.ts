@@ -1603,6 +1603,9 @@ export default {
 
   kanban: {
     notifications: {
+      empty: 'Обновлений задач пока нет',
+      history: 'Предыдущие обновления ({count})',
+      subscriptions: 'Подписки ({count})',
       "title": "Уведомления о задачах",
       "unsubscribe": "Отписаться",
       "createFromSession": "Создать задачу из этой сессии",

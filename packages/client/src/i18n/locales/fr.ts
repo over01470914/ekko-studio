@@ -328,6 +328,9 @@ export default {
   },
   kanban: {
     notifications: {
+      empty: 'Aucune mise à jour de tâche',
+      history: 'Mises à jour précédentes ({count})',
+      subscriptions: 'Abonnements ({count})',
       "title": "Notifications des tâches",
       "unsubscribe": "Se désabonner",
       "createFromSession": "Créer une tâche depuis cette session",

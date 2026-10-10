@@ -40,9 +40,12 @@ test('arbitrary session notices stay outside transcript, poll, switch safely and
   await expect.poll(() => alphaGets).toBe(1)
   await page.getByRole('link', { name: /report-beta/ }).first().click()
   const overlay = page.getByTestId('kanban-notification-overlay')
+  await expect(overlay).not.toBeVisible()
+  await page.getByRole('button', { name: 'Task notifications', exact: true }).click()
   await expect(overlay.getByText('Beta milestone', { exact: true })).toBeVisible()
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 })
+    await expect.poll(async () => (await page.locator('.kanban-session-reporting').boundingBox())?.height || 0).toBeLessThan(40)
     await expect.poll(async () => {
       const shell = await page.locator('.message-list-shell').boundingBox()
       const viewport = await page.locator('.message-list-shell .virtual-message-list-host').boundingBox()
@@ -59,10 +62,78 @@ test('arbitrary session notices stay outside transcript, poll, switch safely and
   await expect(overlay).not.toContainText('Alpha milestone')
   await expect(page.locator('.message-list-shell .message')).not.toContainText(['Beta milestone'])
   expect(await page.evaluate(() => ((window as any).__PW_CHAT_SOCKET__?.emitted || []).filter((x: any) => x.event === 'run').length)).toBe(0)
+  await overlay.locator('.subscriptions > summary').click()
   await overlay.getByRole('button', { name: 'Unsubscribe', exact: true }).click()
   await expect(overlay.getByRole('button', { name: 'Unsubscribe', exact: true })).toHaveCount(0)
   expect(requests).toContain('DELETE /api/studio/sessions/report-beta/kanban-notifications/subscription-42?profile=research')
   await expect.poll(() => requests.filter(r => r.startsWith('GET /api/studio/sessions/report-beta/')).length, { timeout: 15_000 }).toBeGreaterThan(2)
+})
+
+test('compact notifications expand history without moving chat and reset on session switch', async ({ page }, testInfo) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await page.addInitScript(payload => {
+    localStorage.setItem('hermes_brightness', 'dark')
+    ;(window as any).__PW_CHAT_SOCKET_RESUMES__ = payload
+  }, resumes)
+  await mockHermesApi(page, { sessions, kanbanReporting: { enabled: true, diagnosticsEnabled: true } })
+  await mockChatSocket(page)
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route(/\/api\/studio\/sessions\/[^/]+\/kanban-notifications/, route => route.fulfill({ json: {
+    subscriptions: [],
+    notifications: Array.from({ length: 100 }, (_, index) => ({
+      id: index, task_id: 'task-42', board: 'studio-chat-identity', kind: 'blocked',
+      label: index === 0 ? 'Latest task update' : 'Earlier task update ' + index,
+      occurred_at: 1000 - index, summary: 'Full retained task evidence. '.repeat(80),
+    })),
+  } }))
+  await page.goto('/#/hermes/session/report-alpha')
+  await expect(page.getByText('Real transcript report-alpha', { exact: true })).toBeVisible()
+  const trigger = page.getByRole('button', { name: 'Task notifications', exact: true })
+  const panel = page.getByTestId('kanban-notification-overlay')
+  await expect(trigger).toContainText('100')
+  await expect(panel).not.toBeVisible()
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.waitForTimeout(350)
+    await page.screenshot({ path: testInfo.outputPath(`compact-${width}.png`) })
+    const before = await page.locator('.virtual-message-list-host').boundingBox()
+    await trigger.click()
+    await expect(panel.getByText('Latest task update', { exact: true })).toBeVisible()
+    await expect(panel.getByText('Earlier task update 1', { exact: true })).not.toBeVisible()
+    await expect(panel.locator('.notice p').first()).not.toBeVisible()
+    await expect(panel.locator('.task-group')).toHaveCount(1)
+    const after = await page.locator('.virtual-message-list-host').boundingBox()
+    expect(after).toEqual(before)
+    const bounds = await panel.boundingBox()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
+    await expect(panel.locator('xpath=ancestor::*[contains(@class, "n-popover")][1]')).toHaveCSS('opacity', '1')
+    await page.waitForTimeout(350)
+    await page.screenshot({ path: testInfo.outputPath(`popover-${width}.png`) })
+    await panel.locator('.notice-history > summary').click()
+    await expect(panel.getByText('Earlier task update 1', { exact: true })).toBeVisible()
+    await panel.locator('.notice > summary').first().click()
+    await expect(panel.locator('.notice p').first()).toBeVisible()
+    await expect.poll(async () => (await panel.boundingBox())!.height).toBeLessThan(510)
+    await panel.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(panel).not.toBeVisible()
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await trigger.click()
+  await page.getByRole('link', { name: /report-beta/ }).first().focus()
+  await page.keyboard.press('Enter')
+  await expect(panel).not.toBeVisible()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  await expect(panel).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(panel).not.toBeVisible()
+  await page.getByRole('button', { name: 'Create task from this session', exact: true }).click()
+  await expect(page.locator('.n-modal')).toBeVisible()
+  await expect(panel).not.toBeVisible()
+  expect(errors).toEqual([])
 })
 
 test('a revoked reporting session stops polling without repeatedly showing permission notices', async ({ page }) => {

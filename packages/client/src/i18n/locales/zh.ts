@@ -1752,6 +1752,9 @@ export default {
   // 看板
   kanban: {
     notifications: {
+      empty: '暂无任务动态',
+      history: '更早的动态（{count}）',
+      subscriptions: '订阅管理（{count}）',
       "title": "任务通知",
       "unsubscribe": "取消订阅",
       "createFromSession": "从此会话创建任务",
