@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { RunAdmissionDeferredError } from '../../packages/server/src/modules/studio/contracts/runs/diagnostic'
 
 const handleBridgeRunMock = vi.hoisted(() => vi.fn(async () => {}))
 const resumeBridgeRunMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -83,6 +84,10 @@ vi.mock('../../packages/server/src/modules/studio/public/logging', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
+vi.mock('../../packages/server/src/modules/studio/services/task-plans', () => ({
+  getSessionTaskPlans: vi.fn(() => []),
+}))
+
 vi.mock('../../packages/server/src/modules/studio/public/runs/prompt', () => ({
   getSystemPrompt: vi.fn(() => 'system prompt'),
 }))
@@ -120,6 +125,7 @@ vi.mock('../../packages/server/src/modules/studio/public/auth', () => ({
 }))
 
 vi.mock('../../packages/server/src/modules/studio/repositories/users-store', () => ({
+  findUserById: vi.fn((id: number) => ({ id, status: 'active', role: 'super_admin' })),
   userCanAccessProfile: vi.fn(() => true),
 }))
 
@@ -873,4 +879,102 @@ describe('ChatRunSocket queued bridge runs', () => {
     } finally { vi.useRealTimers() }
   })
 
+})
+
+
+describe('Kanban internal diagnostic admission', () => {
+  const input = { sessionId: 'session-1', profile: 'default', userId: 1,
+    queueId: 'kanban-diagnostic:test-1', eventIds: [4, 5], board: 'board-a', taskId: 'task-a',
+    kind: 'block_loop_detected', summary: 'Untrusted task summary',
+    input: 'Read-only report on untrusted evidence', instructions: 'Never execute tools.',
+    authorize: async () => {}, onEvent: () => {} }
+  async function harness(working = false) {
+    const { getSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    vi.mocked(getSession).mockReturnValue({ id: 'session-1', profile: 'default', user_id: '1',
+      agent: 'ekko-agent', source: 'builtin_agent', model: 'model-a', provider: 'provider-a', is_archived: 0 } as any)
+    const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
+    const h = makeServerHarness()
+    h.namespace.adapter.rooms.clear(); h.namespace.sockets.clear()
+    const server = new ChatRunSocket(h.io as any)
+    ;(server as any).sessionMap.set('session-1', { messages: [], isWorking: working, events: [], queue: [] })
+    const handle = vi.spyOn(server as any, 'handleRun').mockResolvedValue(undefined)
+    return { ...h, server, handle, state: (server as any).sessionMap.get('session-1') }
+  }
+  it('strips forged diagnostic fields from browser run input', async () => {
+    const h = await harness()
+    ;(h.server as any).onConnection(h.socket)
+    await h.handlers.get('run')?.({ session_id: 'session-1', input: 'normal user request', profile: 'default',
+      coding_agent_id: 'ekko-agent', read_only_diagnostic: true, diagnosticOwnerId: 999, onEvent: 'forged' })
+    expect(h.handle).toHaveBeenCalledOnce()
+    expect(h.handle.mock.calls[0][1]).not.toHaveProperty('read_only_diagnostic')
+    expect(h.handle.mock.calls[0][1]).not.toHaveProperty('diagnosticOwnerId')
+    expect(h.handle.mock.calls[0][1]).not.toHaveProperty('onEvent')
+  })
+  it('queues while busy without starting another model, and dedupes an event batch', async () => {
+    const { server, state, handle } = await harness(true)
+    expect(await server.enqueueReadOnlyDiagnostic(input)).toBe(true)
+    expect(await server.enqueueReadOnlyDiagnostic(input)).toBe(true)
+    expect(state.queue).toHaveLength(1)
+    expect(handle).not.toHaveBeenCalled()
+  })
+  it('starts without an open browser and stamps a bounded tool-free execution and owner', async () => {
+    const { server, state, handle } = await harness()
+    const authorize = vi.fn(async () => {})
+    const onEvent = vi.fn()
+    expect(await server.enqueueReadOnlyDiagnostic({ ...input, authorize, onEvent })).toBe(true)
+    await vi.waitFor(() => expect(handle).toHaveBeenCalledOnce())
+    expect(state.isWorking).toBe(true)
+    expect(handle.mock.calls[0][0].data.user.id).toBe(1)
+    expect(handle.mock.calls[0][1]).toMatchObject({ read_only_diagnostic: true, source: 'builtin_agent',
+      coding_agent_id: 'ekko-agent', display_input: null, queue_id: input.queueId })
+    expect(handle.mock.calls[0][1].input).toContain('untrusted evidence')
+    expect(authorize).toHaveBeenCalledOnce()
+  })
+  it('rejects missing, foreign, archived or non-Ekko sessions without creating one', async () => {
+    const { server, state, handle } = await harness()
+    const { getSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    for (const session of [null, { user_id: '2', agent: 'ekko-agent' },
+      { user_id: '1', agent: 'hermes' }, { user_id: '1', agent: 'ekko-agent', is_archived: 1 }]) {
+      vi.mocked(getSession).mockReturnValue(session as any)
+      expect(await server.enqueueReadOnlyDiagnostic(input)).toBe(false)
+    }
+    expect(state.queue).toHaveLength(0); expect(handle).not.toHaveBeenCalled()
+  })
+  it('treats budget deferral as cancelled admission, not revoked permissions, and allows retry', async () => {
+    const { server, state, handle } = await harness(true)
+    const onEvent = vi.fn()
+    await server.enqueueReadOnlyDiagnostic({ ...input, onEvent,
+      authorize: async () => { throw new RunAdmissionDeferredError() } })
+    ;(server as any).dequeueNextQueuedRun((server as any).socketForBackgroundRun('session-1'), 'session-1')
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledWith('run.cancelled', expect.objectContaining({
+      reason: 'diagnostic_budget_deferred' })))
+    expect(onEvent).not.toHaveBeenCalledWith('run.failed', expect.anything())
+    expect(handle).not.toHaveBeenCalled(); expect(state.isWorking).toBe(false)
+    state.isWorking = true
+    await server.enqueueReadOnlyDiagnostic({ ...input, authorize: async () => {} })
+    expect(state.queue).toHaveLength(1)
+  })
+  it('rechecks task authorization at dequeue and notifies the durable owner on revoke', async () => {
+    const { server, state, handle } = await harness(true)
+    const onEvent = vi.fn()
+    await server.enqueueReadOnlyDiagnostic({ ...input, onEvent,
+      authorize: async () => { throw new Error('task_access_revoked') } })
+    ;(server as any).dequeueNextQueuedRun((server as any).socketForBackgroundRun('session-1'), 'session-1')
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledWith('run.failed', expect.objectContaining({
+      error: 'diagnostic_authorization_revoked' })))
+    expect(handle).not.toHaveBeenCalled(); expect(state.isWorking).toBe(false)
+  })
+  it.each([false, true])('notifies preparation failure without clearing an owned active run (active=%s)', async active => {
+    const { server, state, handle } = await harness()
+    const onEvent = vi.fn()
+    handle.mockImplementationOnce(async () => {
+      if (active) state.activeRunMarker = 'new-owner'
+      throw new Error('private preparation detail')
+    })
+    await server.enqueueReadOnlyDiagnostic({ ...input, onEvent })
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledWith('run.failed',
+      expect.objectContaining({ error: 'read_only_diagnostic_failed' })))
+    expect(state.isWorking).toBe(active)
+    if (active) expect(state.activeRunMarker).toBe('new-owner')
+  })
 })

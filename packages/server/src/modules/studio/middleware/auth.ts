@@ -362,6 +362,7 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
     }
     ctx.state.profile = { name: binding.profile }
     ctx.state.runCredential = true
+    ctx.state.runContext = binding
     await next()
     return
   }

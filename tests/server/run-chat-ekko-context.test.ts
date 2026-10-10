@@ -20,12 +20,14 @@ const resolveBridgeRunModelConfigMock = vi.hoisted(() => vi.fn())
 const resolveEkkoProviderRuntimeConfigMock = vi.hoisted(() => vi.fn())
 const resolveModelProviderConfigsMock = vi.hoisted(() => vi.fn())
 const agentRunMock = vi.hoisted(() => vi.fn())
+const agentRunIsolatedMock = vi.hoisted(() => vi.fn())
 const agentEstimateContextMock = vi.hoisted(() => vi.fn(async () => ({ contextTokens: 5_000 })))
 const agentSessionWorkspaceDirectoryMock = vi.hoisted(() => (
   vi.fn((sessionId: string) => `/tmp/ekko-workspace/default/${sessionId}`)
 ))
 const getGlobalEkkoAgentMock = vi.hoisted(() => vi.fn(() => ({
   run: agentRunMock,
+  runIsolated: agentRunIsolatedMock,
   estimateContext: agentEstimateContextMock,
   sessionWorkspaceDirectory: agentSessionWorkspaceDirectoryMock,
 })))
@@ -252,6 +254,50 @@ describe('ekko-agent context usage events', () => {
     expect(agentRunMock).not.toHaveBeenCalled()
     expect(state.isWorking).toBe(false)
     expect((state as any).abortController).toBeUndefined()
+  })
+
+  it('uses a one-step isolated runtime with every tool, skill, memory and delegation side effect disabled for Kanban diagnostics', async () => {
+    agentRunIsolatedMock.mockImplementationOnce(async (_options: any, input: any) => {
+      input.onEvent({ type: 'run.started', runId: 'kanban-run', maxSteps: 1 })
+      input.onEvent({ type: 'context.estimated', runId: 'kanban-run', estimate: { contextTokens: 99 } })
+      return { runId: 'kanban-run', output: { role: 'assistant', content: 'The task needs capability review.' }, steps: [], messages: [], events: [] }
+    })
+    const { handleEkkoAgentRun } = await import('../../packages/server/src/modules/studio/services/chat-run/handle-ekko-agent-run')
+    const h = makeHarness()
+    ;(h.state as any).contextTokens = 12345
+    await handleEkkoAgentRun(h.nsp as any, h.socket as any, {
+      input: 'Diagnostic evidence only', display_input: null, storage_message: '',
+      session_id: 'session-1', coding_agent_id: 'ekko-agent', queue_id: 'kanban-diagnostic:fixture',
+      read_only_diagnostic: true, autonomous: true,
+    }, 'default', h.sessionMap, vi.fn(), true)
+    expect(agentRunMock).not.toHaveBeenCalled()
+    expect(buildCompressedHistoryMock).not.toHaveBeenCalled()
+    expect((h.state as any).contextTokens).toBe(12345)
+    expect(agentRunIsolatedMock).toHaveBeenCalledOnce()
+    expect(agentRunIsolatedMock.mock.calls[0][0]).toMatchObject({ toolsEnabled: false, skillsEnabled: false,
+      memory: false, maxSteps: 1, maxModelRetries: 1, skillReviewEveryToolCalls: 0 })
+    expect(agentRunIsolatedMock.mock.calls[0][1]).toMatchObject({ maxSteps: 1, maxTokens: 1536,
+      memoryEnabled: false, skillReviewEnabled: false, backgroundDelegationEnabled: false, ephemeralContext: true })
+    expect(h.state.isWorking).toBe(false)
+  })
+
+  it('times out a stalled Kanban diagnostic and releases the original session queue', async () => {
+    vi.useFakeTimers()
+    try {
+      agentRunIsolatedMock.mockImplementationOnce(async (_options: any, input: any) => new Promise((_resolve, reject) => {
+        input.signal.addEventListener('abort', () => reject(Object.assign(new Error('Run aborted.'), { name: 'AbortError' })), { once: true })
+      }))
+      const { handleEkkoAgentRun } = await import('../../packages/server/src/modules/studio/services/chat-run/handle-ekko-agent-run')
+      const h = makeHarness(), onEvent = vi.fn()
+      const run = handleEkkoAgentRun(h.nsp as any, h.socket as any, { input: 'Evidence', display_input: null,
+        session_id: 'session-1', coding_agent_id: 'ekko-agent', queue_id: 'kanban-diagnostic:timeout',
+        read_only_diagnostic: true, onEvent }, 'default', h.sessionMap, vi.fn(), true)
+      await vi.waitFor(() => expect(agentRunIsolatedMock).toHaveBeenCalledOnce())
+      await vi.advanceTimersByTimeAsync(90_000)
+      await run
+      expect(h.state.isWorking).toBe(false)
+      expect(onEvent).toHaveBeenCalledWith('run.failed', expect.objectContaining({ error: 'read_only_diagnostic_timeout' }))
+    } finally { vi.useRealTimers() }
   })
 
   it('persists plan snapshots before broadcasting and records update_plan calls in chat history', async () => {

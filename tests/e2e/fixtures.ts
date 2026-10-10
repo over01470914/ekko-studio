@@ -46,6 +46,7 @@ interface MockThemePayload {
 }
 
 interface MockHermesApiOptions {
+  kanbanReporting?: { enabled: boolean; diagnosticsEnabled: boolean }
   accountUsername?: string
   accountAvatar?: string
   accountUnavailable?: boolean
@@ -211,6 +212,10 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
 
     requests.push(recordRequest(request))
 
+    if (pathname === '/api/studio/kanban-reporting') {
+      await route.fulfill({ json: options.kanbanReporting ?? { enabled: false, diagnosticsEnabled: false } })
+      return
+    }
     if (pathname === '/api/studio/announcements') {
       await route.fulfill(jsonResponse({ ok: true, platform: 'desktop', list: [] }))
       return

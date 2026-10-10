@@ -327,6 +327,19 @@ export default {
     deleteProfileTitle: 'Browserprofil löschen?', deleteProfileWarning: 'Verwaltete Daten werden in den Papierkorb verschoben. Benutzerdefinierte Ordner bleiben erhalten.', clearCache: 'Cache leeren', clearPermissionAudit: 'Berechtigungsprotokoll leeren', clearSiteData: 'Websitedaten löschen', clearSiteDataWarning: 'Löscht Anmeldungen, Cookies und lokalen Speicher des gewählten Profils.', dataCleared: 'Browserdaten gelöscht', loadFailed: 'Der eingebettete Browser konnte nicht gestartet werden',
   },
   kanban: {
+    notifications: {
+      "title": "Aufgabenbenachrichtigungen",
+      "unsubscribe": "Abbestellen",
+      "createFromSession": "Aufgabe aus dieser Sitzung erstellen",
+      "target": "Zielsitzung für Berichte",
+      "chooseSession": "Sitzung auswählen",
+      "wake": "Agent-Aktivierung erlauben",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "Abonnieren",
+      "subscribed": "Abonniert",
+      "loadFailed": "Benachrichtigungen nicht verfügbar; erneuter Versuch",
+      "saveFailed": "Abonnement konnte nicht gespeichert werden"
+},
     board: {
       defaultArchiveUnavailable: 'Das Standard-Kanban kann nicht archiviert werden',
     },

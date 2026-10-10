@@ -1,9 +1,11 @@
 import Router from '@koa/router'
+import * as kanbanNotifications from '../controllers/kanban-notifications'
 import * as shares from '../controllers/session-shares'
 import * as directories from '../controllers/workspace-directories'
 import * as ctrl from '../controllers/sessions'
 
 export const sessionRoutes = new Router()
+sessionRoutes.get('/api/studio/kanban-reporting', kanbanNotifications.getKanbanReportingCapabilities)
 
 sessionRoutes.get('/api/studio/sessions/conversations', ctrl.listConversations)
 sessionRoutes.get('/api/studio/session-categories', ctrl.listCategories)
@@ -64,3 +66,7 @@ sessionRoutes.patch('/api/studio/workspace/directories', directories.setFavorite
 sessionRoutes.post('/api/studio/workspace/folders', ctrl.createWorkspaceFolder)
 sessionRoutes.post('/api/studio/workspace/folders/rename', ctrl.renameWorkspaceFolder)
 sessionRoutes.delete('/api/studio/workspace/folders', ctrl.deleteWorkspaceFolder)
+
+sessionRoutes.get('/api/studio/sessions/:id/kanban-notifications', kanbanNotifications.listKanbanNotifications)
+sessionRoutes.post('/api/studio/sessions/:id/kanban-notifications', kanbanNotifications.subscribeKanbanNotifications)
+sessionRoutes.delete('/api/studio/sessions/:id/kanban-notifications/:subscriptionId', kanbanNotifications.unsubscribeKanbanNotifications)

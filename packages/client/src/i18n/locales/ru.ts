@@ -1602,6 +1602,19 @@ export default {
 
 
   kanban: {
+    notifications: {
+      "title": "Уведомления о задачах",
+      "unsubscribe": "Отписаться",
+      "createFromSession": "Создать задачу из этой сессии",
+      "target": "Сессия для отчётов",
+      "chooseSession": "Выбрать сессию",
+      "wake": "Разрешить пробуждение агента",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "Подписаться",
+      "subscribed": "Подписка сохранена",
+      "loadFailed": "Уведомления недоступны; повторная попытка",
+      "saveFailed": "Не удалось сохранить подписку"
+},
     title: 'Канбан',
     createTask: 'Создать задачу',
     noTasks: 'Нет задач',

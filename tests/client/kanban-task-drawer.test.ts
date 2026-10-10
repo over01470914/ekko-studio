@@ -1,3 +1,4 @@
+vi.mock('@/components/hermes/kanban/KanbanTaskSubscription.vue', () => ({ default: { template: '<div />' } }))
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'

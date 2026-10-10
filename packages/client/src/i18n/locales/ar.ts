@@ -1744,6 +1744,19 @@ export default {
 
   // Kanban
   kanban: {
+    notifications: {
+      "title": "إشعارات المهام",
+      "unsubscribe": "إلغاء الاشتراك",
+      "createFromSession": "إنشاء مهمة من هذه الجلسة",
+      "target": "جلسة التقارير",
+      "chooseSession": "اختر جلسة",
+      "wake": "السماح بتنشيط الوكيل",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "اشتراك",
+      "subscribed": "تم الاشتراك",
+      "loadFailed": "الإشعارات غير متاحة؛ جارٍ إعادة المحاولة",
+      "saveFailed": "تعذر حفظ الاشتراك"
+},
     title: 'لوحة كانبان',
     createTask: 'مهمة جديدة',
     noTasks: 'لا توجد مهام',

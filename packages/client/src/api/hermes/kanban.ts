@@ -159,6 +159,7 @@ export interface KanbanTaskLog {
 }
 
 export interface KanbanCreateRequest {
+  origin_session_id?: string
   title: string
   body?: string
   assignee?: string

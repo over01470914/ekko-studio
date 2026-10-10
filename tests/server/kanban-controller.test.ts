@@ -694,3 +694,50 @@ describe('kanban controller', () => {
     expect(mockBlockTask).not.toHaveBeenCalled()
   })
 })
+
+
+describe('Kanban creation origin binding',()=>{
+  it('rejects forged origins before creating a task',async()=>{
+    const {setKanbanOriginPort}=await import('../../packages/server/src/modules/studio/public/kanban-notifications')
+    const validate=vi.fn(()=>{throw new Error('foreign session')})
+    setKanbanOriginPort({validate,bind:vi.fn()})
+    const c=ctx({state:{user:{id:7,role:'super_admin'}},request:{body:{title:'new task',origin_session_id:'foreign-session'}}})
+    mockCreateTask.mockClear()
+    await ctrl.create(c)
+    expect(c.status).toBe(403);expect(mockCreateTask).not.toHaveBeenCalled()
+    setKanbanOriginPort(null)
+  })
+  it('uses trusted run origin and refuses conflicting client session IDs',async()=>{
+    const {setKanbanOriginPort}=await import('../../packages/server/src/modules/studio/public/kanban-notifications')
+    const bind=vi.fn(async()=>{})
+    setKanbanOriginPort({validate:()=> 'default',bind})
+    mockCreateTask.mockClear();mockCreateTask.mockResolvedValue({id:'created-task'})
+    const state={user:{id:7,role:'super_admin'},runContext:{sessionId:'source-session'}}
+    const forged=ctx({state,request:{body:{title:'new task',origin_session_id:'another'}}})
+    await ctrl.create(forged);expect(forged.status).toBe(403);expect(mockCreateTask).not.toHaveBeenCalled()
+    const valid=ctx({state,query:{board:'board-a'},request:{body:{title:'new task'}}})
+    await ctrl.create(valid)
+    expect(bind).toHaveBeenCalledWith({userId:7,sessionId:'source-session',profile:'default',board:'board-a',taskId:'created-task'})
+    setKanbanOriginPort(null)
+  })
+  it('does not turn a successful creation into a duplicate-inducing retry when binding fails',async()=>{
+    const {setKanbanOriginPort}=await import('../../packages/server/src/modules/studio/public/kanban-notifications')
+    setKanbanOriginPort({validate:()=> 'default',bind:async()=>{throw new Error('offline')}})
+    mockCreateTask.mockResolvedValue({id:'created-task'})
+    const c=ctx({state:{user:{id:7,role:'super_admin'}},request:{body:{title:'new task',origin_session_id:'source'}}})
+    await ctrl.create(c)
+    expect(c.status).toBe(200);expect(c.body).toEqual({task:{id:'created-task'},report_subscription_error:'kanban_reporting_bind_failed'})
+    setKanbanOriginPort(null)
+  })
+})
+it('preserves native task creation with a source session when reporting is disabled', async () => {
+  const { setKanbanOriginPort } = await import('../../packages/server/src/modules/studio/public/kanban-notifications')
+  setKanbanOriginPort(null)
+  mockCreateTask.mockResolvedValue({ id: 'new-task' })
+  const { create } = await import('../../packages/server/src/modules/hermes/controllers/kanban')
+  const context = ctx({ request: { body: { title: 'Normal task' } }, query: { board: 'default' },
+    state: { user: { id: 7, role: 'super_admin' }, runContext: { sessionId: 'source-session' } } })
+  await create(context)
+  expect(mockCreateTask).toHaveBeenCalled()
+  expect(context.body.task.id).toBe('new-task')
+})

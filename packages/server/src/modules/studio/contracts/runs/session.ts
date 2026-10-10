@@ -62,6 +62,10 @@ export interface SessionMessage {
 export interface QueuedRun {
   /** Internal admission check, never serialized or supplied by the client. */
   authorize?: () => Promise<void>
+  /** Host-only, bounded tool-free task diagnostic. Never accepted from socket input. */
+  readOnlyDiagnostic?: boolean
+  diagnosticOwnerId?: number
+  internalOnEvent?: (event: string, payload: any) => void
   /** Captured at admission, independent of whichever socket drains the queue. */
   pushTargetId?: string
   queue_id: string

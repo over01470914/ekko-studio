@@ -1,3 +1,4 @@
+import { startKanbanReporting } from './kanban-reporting'
 import { setupMobileTerminal } from '../modules/hermes/sockets/mobile-terminal'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
@@ -596,6 +597,8 @@ export async function bootstrap() {
   setChatRunServer(chatRunServer)
   activeGroupChatServer.setChatRunService(chatRunServer)
   chatRunServer.init()
+  const stopKanbanReporting = startKanbanReporting(chatRunServer)
+  additionalShutdownSteps.push({ name: 'Kanban reporting', close: stopKanbanReporting })
   const mobileTerminal = setupMobileTerminal(activeGroupChatServer.getIO(), context => {
     if (context.source === 'single') {
       const session = getTerminalSessionMetadata(context.sourceId)

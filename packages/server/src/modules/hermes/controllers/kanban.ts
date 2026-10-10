@@ -1,3 +1,4 @@
+import { bindKanbanOrigin, isKanbanReportingEnabled, validateKanbanOrigin } from '../../studio/public/kanban-notifications'
 import type { Context } from 'koa'
 import { readFile } from 'fs/promises'
 import { join, resolve } from 'path'
@@ -455,6 +456,7 @@ export async function create(ctx: Context) {
   if (rejectBadRequest(ctx, bodyResult.error)) return
   const payload = bodyResult.body
   const title = requiredNonEmptyString(payload.title, 'title')
+  const origin = optionalString(payload.origin_session_id, 'origin_session_id')
   const body = optionalString(payload.body, 'body')
   const assignee = optionalString(payload.assignee, 'assignee')
   const priority = optionalInteger(payload.priority, 'priority')
@@ -467,7 +469,20 @@ export async function create(ctx: Context) {
   const maxRetries = optionalPositiveInteger(payload.maxRetries, 'maxRetries', 100)
   const goalMode = optionalBoolean(payload.goalMode, 'goalMode')
   const goalMaxTurns = optionalPositiveInteger(payload.goalMaxTurns, 'goalMaxTurns', 100)
-  if (rejectBadRequest(ctx, title.error || body.error || assignee.error || priority.error || tenant.error || workspace.error || branch.error || triage.error || skills.error || maxRuntime.error || maxRetries.error || goalMode.error || goalMaxTurns.error)) return
+  if (rejectBadRequest(ctx, title.error || origin.error || body.error || assignee.error || priority.error || tenant.error || workspace.error || branch.error || triage.error || skills.error || maxRuntime.error || maxRetries.error || goalMode.error || goalMaxTurns.error)) return
+  const trustedOrigin = ctx.state?.runContext?.sessionId as string | undefined
+  if (trustedOrigin && origin.value && origin.value !== trustedOrigin) {
+    ctx.status = 403; ctx.body = { error: 'kanban_origin_mismatch' }; return
+  }
+  const originSession = trustedOrigin || origin.value
+  let originProfile: string | undefined
+  if (originSession && isKanbanReportingEnabled()) {
+    if (!ctx.state?.user || originSession.length > 128) {
+      ctx.status = 403; ctx.body = { error: 'kanban_origin_forbidden' }; return
+    }
+    try { originProfile = validateKanbanOrigin(ctx.state.user.id, originSession) }
+    catch { ctx.status = 403; ctx.body = { error: 'kanban_origin_forbidden' }; return }
+  }
   const targetAssignee = assignee.value || requestedProfile(ctx) || undefined
   if (targetAssignee && denyProfileAccess(ctx, targetAssignee)) return
   const board = requestBoard(ctx)
@@ -488,7 +503,14 @@ export async function create(ctx: Context) {
       goalMode: goalMode.value,
       goalMaxTurns: goalMaxTurns.value,
     })
-    ctx.body = { task }
+    let reportSubscriptionError: string | undefined
+    if (originSession && originProfile && ctx.state.user) {
+      try { await bindKanbanOrigin({ userId: ctx.state.user.id, sessionId: originSession,
+        profile: originProfile, board, taskId: task.id }) }
+      catch { reportSubscriptionError = 'kanban_reporting_bind_failed' }
+    }
+    // Creation already succeeded: never encourage a retry that duplicates the task.
+    ctx.body = { task, ...(reportSubscriptionError ? { report_subscription_error: reportSubscriptionError } : {}) }
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }

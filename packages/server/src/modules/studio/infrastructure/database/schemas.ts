@@ -204,6 +204,53 @@ export const SESSIONS_INDEXES = {
   idx_sessions_category_id: 'CREATE INDEX IF NOT EXISTS idx_sessions_category_id ON sessions(category_id)',
 }
 
+
+// Studio-owned polling notifications; native payloads are never persisted verbatim.
+export const KANBAN_DIAGNOSTIC_ADMISSIONS_TABLE = 'kanban_diagnostic_admissions'
+export const KANBAN_DIAGNOSTIC_ADMISSIONS_SCHEMA: Record<string, string> = {
+  id: 'TEXT PRIMARY KEY', reserved_at: 'INTEGER NOT NULL',
+  tokens: 'INTEGER NOT NULL DEFAULT 8192', status: "TEXT NOT NULL DEFAULT 'running'",
+}
+
+export const KANBAN_DIAGNOSTIC_RUNS_TABLE = 'kanban_diagnostic_runs'
+export const KANBAN_DIAGNOSTIC_RUNS_SCHEMA: Record<string, string> = {
+  queue_id: 'TEXT PRIMARY KEY',
+  payload_json: 'TEXT NOT NULL',
+  batch_id: 'TEXT',
+  status: "TEXT NOT NULL DEFAULT 'pending'",
+  attempts: 'INTEGER NOT NULL DEFAULT 0',
+  next_attempt_at: 'INTEGER NOT NULL DEFAULT 0',
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+}
+
+export const KANBAN_SESSION_SUBSCRIPTIONS_TABLE = 'kanban_session_subscriptions'
+export const KANBAN_SESSION_SUBSCRIPTIONS_SCHEMA: Record<string, string> = {
+  id: 'INTEGER PRIMARY KEY AUTOINCREMENT', user_id: 'INTEGER NOT NULL',
+  profile: 'TEXT NOT NULL', session_id: 'TEXT NOT NULL', board: 'TEXT NOT NULL', task_id: 'TEXT NOT NULL',
+  cursor: 'INTEGER NOT NULL DEFAULT 0', active: 'INTEGER NOT NULL DEFAULT 1',
+  wake_enabled: 'INTEGER NOT NULL DEFAULT 0', last_wake_at: 'INTEGER NOT NULL DEFAULT 0',
+  state_event_id: 'INTEGER NOT NULL DEFAULT 0', last_error: 'TEXT',
+  created_at: 'INTEGER NOT NULL', updated_at: 'INTEGER NOT NULL',
+}
+export const KANBAN_SESSION_SUBSCRIPTIONS_INDEXES = {
+  uniq_kanban_subscription: 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_kanban_subscription ON kanban_session_subscriptions(user_id, session_id, board, task_id)',
+}
+export const KANBAN_SESSION_NOTIFICATIONS_TABLE = 'kanban_session_notifications'
+export const KANBAN_SESSION_NOTIFICATIONS_SCHEMA: Record<string, string> = {
+  id: 'INTEGER PRIMARY KEY AUTOINCREMENT', subscription_id: 'INTEGER NOT NULL', event_id: 'INTEGER NOT NULL',
+  kind: 'TEXT NOT NULL', label: 'TEXT NOT NULL', summary: "TEXT NOT NULL DEFAULT ''",
+  actor: "TEXT NOT NULL DEFAULT 'kanban/native'", occurred_at: 'INTEGER NOT NULL',
+  status: "TEXT NOT NULL DEFAULT 'delivered'", delivered_at: 'INTEGER NOT NULL',
+  wake_status: "TEXT NOT NULL DEFAULT 'none'", attempts: 'INTEGER NOT NULL DEFAULT 0',
+  next_attempt_at: 'INTEGER NOT NULL DEFAULT 0', lease_until: 'INTEGER NOT NULL DEFAULT 0',
+  queue_id: 'TEXT', last_error: 'TEXT',
+}
+export const KANBAN_SESSION_NOTIFICATIONS_INDEXES = {
+  uniq_kanban_notification: 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_kanban_notification ON kanban_session_notifications(subscription_id, event_id)',
+  idx_kanban_notification_pending: 'CREATE INDEX IF NOT EXISTS idx_kanban_notification_pending ON kanban_session_notifications(subscription_id, wake_status, next_attempt_at)',
+}
+
 export const MESSAGES_TABLE = 'messages'
 
 export const MESSAGES_SCHEMA: Record<string, string> = {
@@ -1715,6 +1762,13 @@ export function initAllHermesTables(): void {
       indexes: WORKSPACE_RUN_CHANGE_FILES_INDEXES,
     })
     cleanupHistoricalZeroLineWorkspaceDiffs(db)
+
+    syncTable(KANBAN_DIAGNOSTIC_ADMISSIONS_TABLE, KANBAN_DIAGNOSTIC_ADMISSIONS_SCHEMA)
+    syncTable(KANBAN_DIAGNOSTIC_RUNS_TABLE, KANBAN_DIAGNOSTIC_RUNS_SCHEMA)
+    syncTable(KANBAN_SESSION_SUBSCRIPTIONS_TABLE, KANBAN_SESSION_SUBSCRIPTIONS_SCHEMA, { indexes: KANBAN_SESSION_SUBSCRIPTIONS_INDEXES })
+    syncTable(KANBAN_SESSION_NOTIFICATIONS_TABLE, KANBAN_SESSION_NOTIFICATIONS_SCHEMA, { indexes: KANBAN_SESSION_NOTIFICATIONS_INDEXES })
+    createIndexes(db, KANBAN_SESSION_SUBSCRIPTIONS_INDEXES)
+    createIndexes(db, KANBAN_SESSION_NOTIFICATIONS_INDEXES)
 
     // Workflow store
     syncTable(WORKFLOWS_TABLE, WORKFLOWS_SCHEMA, {

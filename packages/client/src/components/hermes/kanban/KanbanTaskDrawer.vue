@@ -8,6 +8,7 @@ import { getAttachmentContentPath, getTask, listAttachments } from '@/api/hermes
 import { useKanbanStore } from '@/stores/hermes/kanban'
 import { useFilesStore } from '@/stores/hermes/files'
 import { withDefaultAssignee } from '@/utils/hermes/kanban-assignees'
+import KanbanTaskSubscription from './KanbanTaskSubscription.vue'
 import HistoryMessageList from '@/components/hermes/chat/HistoryMessageList.vue'
 import FilePreview from '@/components/hermes/files/FilePreview.vue'
 import { fetchAuthenticatedBlob, saveBlob } from '@/api/studio/binary-content'
@@ -445,6 +446,7 @@ function handleNavigateTask(taskId: string) {
     <NDrawerContent :title="detail?.task.title || ''" closable>
       <NSpin :show="loading">
         <template v-if="detail">
+          <KanbanTaskSubscription v-if="taskId" :task-id="taskId" :board="kanbanStore.selectedBoard" />
           <!-- Metadata -->
           <div class="detail-section">
             <div class="detail-row">

@@ -7,6 +7,9 @@ import { withDefaultAssignee } from '@/utils/hermes/kanban-assignees'
 import { fetchSkills } from '@/api/hermes/skills'
 import type { SkillInfo } from '@/api/hermes/skills'
 
+// Only a caller creating from an explicit session action may supply this origin.
+const props = defineProps<{ originSessionId?: string }>()
+
 const emit = defineEmits<{
   close: []
   created: []
@@ -103,6 +106,7 @@ async function handleSubmit() {
       assignee: assignee.value || undefined,
       priority: priority.value ?? undefined,
     }
+    if (props.originSessionId) payload.origin_session_id = props.originSessionId
     const tenantValue = tenant.value.trim()
     const selectedWorkspace = workspaceValue()
     const branchValue = branch.value.trim()

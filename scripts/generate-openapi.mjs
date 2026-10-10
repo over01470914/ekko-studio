@@ -1562,6 +1562,66 @@ for (const [method, operation] of Object.entries(workspaceDirectoriesPath)) {
   } } } }
   operation.responses['400'] = { description: 'Invalid directory path or favorite value' }
 }
+// Studio-owned native task reporting. Notification overlay is tool-free; opt-in diagnostics use safe admission.
+openapi.components.schemas.KanbanSessionMilestone = {
+  type: 'object', required: ['id', 'board', 'task_id', 'event_id', 'kind', 'label', 'actor', 'occurred_at'],
+  properties: {
+    id: { type: 'integer' }, board: { type: 'string' }, task_id: { type: 'string' },
+    event_id: { type: 'integer' }, kind: { type: 'string' }, label: { type: 'string' }, summary: { type: 'string' }, wake_status: { type: 'string' },
+    actor: { type: 'string', enum: ['kanban/native'] }, occurred_at: { type: 'integer', description: 'Unix seconds' },
+  },
+}
+openapi.components.schemas.KanbanSessionSubscription = {
+  type: 'object', required: ['id', 'board', 'task_id', 'active', 'created_at'],
+  properties: {
+    id: { type: 'integer' }, board: { type: 'string' }, task_id: { type: 'string' },
+    active: { type: 'boolean' }, wake_enabled: { type: 'boolean', default: false }, last_error: { type: 'string', nullable: true },
+    created_at: { type: 'integer', description: 'Unix milliseconds' }, updated_at: { type: 'integer', description: 'Unix milliseconds' },
+  },
+}
+for (const [path, methods] of Object.entries(openapi.paths)) {
+  if (!/^\/api\/studio\/sessions\/\{id\}\/kanban-notifications/.test(path)) continue
+  for (const [method, operation] of Object.entries(methods)) {
+    operation.tags = ['Sessions']
+    operation.security = [{ BearerAuth: [] }]
+    operation.description = 'Owner-only, Profile-checked native Kanban reporting to an existing Studio session. Notifications do not enter the agent transcript. Optional wake_enabled requests bounded, tool-free Ekko diagnostics at selected unresolved blockers; completion and needs_input do not wake. No arbitrary callback URL or APNs guarantee.'
+    operation.parameters = [
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Existing owned Studio session ID.' },
+      { name: 'profile', in: 'query', required: false, schema: { type: 'string' }, description: 'Defaults to the resolved Profile; must match the session Profile.' },
+      ...(path.endsWith('/{subscriptionId}') ? [{ name: 'subscriptionId', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } }] : []),
+    ]
+    operation.responses = {
+      200: { description: method === 'get' ? 'Subscriptions and last 100 delivered milestone notices' : 'Subscription state', content: { 'application/json': { schema:
+        method === 'get' ? { type: 'object', required: ['subscriptions', 'notifications'], properties: {
+          subscriptions: { type: 'array', items: { $ref: '#/components/schemas/KanbanSessionSubscription' } },
+          notifications: { type: 'array', items: { $ref: '#/components/schemas/KanbanSessionMilestone' } },
+        } } : method === 'post' ? { $ref: '#/components/schemas/KanbanSessionSubscription' } : { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+      } } },
+      400: { description: 'Invalid subscription input' }, 401: { description: 'Unauthorized' },
+      403: { description: 'Not the session owner, or no Profile/task access' },
+      404: { description: 'Board or subscription not found' }, 409: { description: 'Diagnostics are disabled by the operator' },
+      503: { description: 'Reporting disabled, or Studio/native event source unavailable (sanitized error)' },
+    }
+    if (method === 'post') operation.requestBody = { required: true, content: { 'application/json': { schema: {
+      type: 'object', additionalProperties: false, required: ['board', 'task_id'], properties: {
+        board: { type: 'string', maxLength: 64 },
+        task_id: { type: 'string', maxLength: 128 }, wake_enabled: { type: 'boolean', default: false },
+      },
+    } } } }
+  }
+}
+
+const reportingCapabilities = openapi.paths['/api/studio/kanban-reporting'].get
+reportingCapabilities.tags = ['Sessions']
+reportingCapabilities.security = [{ BearerAuth: [] }]
+reportingCapabilities.description = 'Authenticated account discovery of the active optional reporting module. Managed run credentials are denied. Default off; notification-only and diagnostic admission are independently enabled at process startup.'
+reportingCapabilities.responses = {
+  200: { description: 'Active reporting capabilities', content: { 'application/json': { schema: {
+    type: 'object', required: ['enabled', 'diagnosticsEnabled'], additionalProperties: false,
+    properties: { enabled: { type: 'boolean' }, diagnosticsEnabled: { type: 'boolean' } },
+  } } } },
+  401: { description: 'Authenticated browser user required' },
+}
 
 // Write output
 const outputPath = join(rootDir, 'docs/openapi.json')

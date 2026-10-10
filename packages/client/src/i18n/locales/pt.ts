@@ -327,6 +327,19 @@ export default {
     deleteProfileTitle: 'Excluir perfil?', deleteProfileWarning: 'Dados gerenciados irão para a Lixeira. Diretórios personalizados serão mantidos.', clearCache: 'Limpar cache', clearPermissionAudit: 'Limpar registro de permissões', clearSiteData: 'Limpar dados de sites', clearSiteDataWarning: 'Remove logins, cookies e armazenamento local do perfil selecionado.', dataCleared: 'Dados do navegador limpos', loadFailed: 'Não foi possível iniciar o navegador integrado',
   },
   kanban: {
+    notifications: {
+      "title": "Notificações de tarefas",
+      "unsubscribe": "Cancelar assinatura",
+      "createFromSession": "Criar tarefa nesta sessão",
+      "target": "Sessão de destino",
+      "chooseSession": "Escolher uma sessão",
+      "wake": "Permitir ativar o agente",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "Assinar",
+      "subscribed": "Assinatura salva",
+      "loadFailed": "Notificações indisponíveis; tentando novamente",
+      "saveFailed": "Não foi possível salvar a assinatura"
+},
     board: {
       defaultArchiveUnavailable: 'O quadro padrão não pode ser arquivado',
     },

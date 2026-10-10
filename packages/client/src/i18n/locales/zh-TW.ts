@@ -1739,6 +1739,19 @@ export default {
 
   // 看板
   kanban: {
+    notifications: {
+      "title": "任務通知",
+      "unsubscribe": "取消訂閱",
+      "createFromSession": "從此 session 建立任務",
+      "target": "回報目標 session",
+      "chooseSession": "選擇 session",
+      "wake": "允許喚醒 Agent",
+      "wakeHint": "通知不耗模型 token；自動診斷預設關閉，只支援 Ekko session 的未解決能力／分診阻塞，且停用工具，不會每次完成或阻塞都喚醒。",
+      "subscribe": "訂閱",
+      "subscribed": "已訂閱",
+      "loadFailed": "通知無法取得，正在重試",
+      "saveFailed": "無法儲存訂閱"
+},
     title: '看板',
     createTask: '新增任務',
     noTasks: '目前無任務',

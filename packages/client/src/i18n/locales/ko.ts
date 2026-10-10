@@ -327,6 +327,19 @@ export default {
     deleteProfileTitle: '프로필을 삭제할까요?', deleteProfileWarning: '관리 데이터는 휴지통으로 이동하며 사용자 지정 경로는 유지됩니다.', clearCache: '캐시 지우기', clearPermissionAudit: '권한 기록 지우기', clearSiteData: '사이트 데이터 지우기', clearSiteDataWarning: '선택한 프로필의 로그인, 쿠키 및 로컬 저장소를 지웁니다.', dataCleared: '브라우저 데이터를 지웠습니다', loadFailed: '내장 브라우저를 시작하지 못했습니다',
   },
   kanban: {
+    notifications: {
+      "title": "작업 알림",
+      "unsubscribe": "구독 취소",
+      "createFromSession": "이 세션에서 작업 만들기",
+      "target": "보고 대상 세션",
+      "chooseSession": "세션 선택",
+      "wake": "에이전트 깨우기 허용",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "구독",
+      "subscribed": "구독 완료",
+      "loadFailed": "알림을 사용할 수 없습니다. 재시도 중",
+      "saveFailed": "구독을 저장할 수 없습니다"
+},
     board: {
       defaultArchiveUnavailable: '기본 칸반은 보관할 수 없습니다',
     },

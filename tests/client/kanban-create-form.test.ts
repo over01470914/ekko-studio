@@ -112,6 +112,7 @@ describe('KanbanCreateForm', () => {
       priority: 3,
     })
     expect(mockMessage.success).toHaveBeenCalledWith('kanban.message.taskCreated')
+    expect(mockMessage.error).not.toHaveBeenCalled()
     expect(wrapper.emitted('created')).toBeTruthy()
     expect(wrapper.emitted('close')).toBeTruthy()
   })
@@ -155,6 +156,21 @@ describe('KanbanCreateForm', () => {
       goalMode: true,
       goalMaxTurns: 12,
     })
+  })
+
+  it('sends only explicit trusted session origin, never a remembered active session', async () => {
+    localStorage.setItem('hermes_active_session_default', 'must-not-infer')
+    mockCreateTask.mockResolvedValue({ id: 'new' })
+    const wrapper = mount(KanbanCreateForm, { props: { originSessionId: 'explicit-session' } })
+    await wrapper.findAll('.n-input-stub')[0].setValue('Origin task')
+    await wrapper.findAll('.n-button-stub')[1].trigger('click')
+    await flushPromises()
+    expect(mockCreateTask.mock.calls[0][0].origin_session_id).toBe('explicit-session')
+    const standalone = mount(KanbanCreateForm)
+    await standalone.findAll('.n-input-stub')[0].setValue('Standalone')
+    await standalone.findAll('.n-button-stub')[1].trigger('click')
+    await flushPromises()
+    expect(mockCreateTask.mock.calls[1][0]).not.toHaveProperty('origin_session_id')
   })
 
   it('uses compact profile names for assignee options', () => {

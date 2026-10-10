@@ -327,6 +327,19 @@ export default {
     deleteProfileTitle: 'Supprimer le profil ?', deleteProfileWarning: 'Les données gérées seront placées dans la corbeille. Les dossiers personnalisés sont conservés.', clearCache: 'Vider le cache', clearPermissionAudit: 'Effacer le journal des autorisations', clearSiteData: 'Effacer les données des sites', clearSiteDataWarning: 'Efface les connexions, cookies et le stockage local du profil sélectionné.', dataCleared: 'Données du navigateur effacées', loadFailed: 'Impossible de démarrer le navigateur intégré',
   },
   kanban: {
+    notifications: {
+      "title": "Notifications des tâches",
+      "unsubscribe": "Se désabonner",
+      "createFromSession": "Créer une tâche depuis cette session",
+      "target": "Session destinataire",
+      "chooseSession": "Choisir une session",
+      "wake": "Autoriser le réveil de l’agent",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "S’abonner",
+      "subscribed": "Abonnement enregistré",
+      "loadFailed": "Notifications indisponibles ; nouvelle tentative",
+      "saveFailed": "Impossible d’enregistrer l’abonnement"
+},
     board: {
       defaultArchiveUnavailable: 'Le tableau par défaut ne peut pas être archivé',
     },

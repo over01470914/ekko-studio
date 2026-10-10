@@ -327,6 +327,19 @@ export default {
     deleteProfileTitle: 'プロファイルを削除しますか？', deleteProfileWarning: '管理対象データはゴミ箱へ移動します。カスタムディレクトリは残ります。', clearCache: 'キャッシュを消去', clearPermissionAudit: '権限ログを消去', clearSiteData: 'サイトデータを消去', clearSiteDataWarning: '選択したプロファイルのログイン、Cookie、ローカルストレージを消去します。', dataCleared: 'ブラウザーデータを消去しました', loadFailed: '内蔵ブラウザーを起動できませんでした',
   },
   kanban: {
+    notifications: {
+      "title": "タスク通知",
+      "unsubscribe": "購読解除",
+      "createFromSession": "このセッションからタスクを作成",
+      "target": "報告先セッション",
+      "chooseSession": "セッションを選択",
+      "wake": "エージェントの起動を許可",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "購読",
+      "subscribed": "購読しました",
+      "loadFailed": "通知を取得できません。再試行中",
+      "saveFailed": "購読を保存できませんでした"
+},
     board: {
       defaultArchiveUnavailable: 'デフォルトのカンバンはアーカイブできません',
     },

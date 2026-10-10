@@ -48,6 +48,9 @@ export interface KanbanTask {
   result: string | null
   skills: string[] | null
   goal_mode?: boolean
+  session_id?: string | null
+  creator_task_id?: string | null
+  block_kind?: string | null
 }
 
 export interface KanbanRun {
@@ -186,7 +189,13 @@ export interface KanbanBulkTaskUpdateResult {
 
 // ─── CLI wrappers ───────────────────────────────────────────────
 
-export async function listBoards(opts?: { includeArchived?: boolean }): Promise<KanbanBoard[]> {
+function canonicalBoardEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  delete env.HERMES_KANBAN_DB
+  return env
+}
+
+export async function listBoards(opts?: { includeArchived?: boolean; canonicalBoard?: boolean }): Promise<KanbanBoard[]> {
   const args = ['kanban', 'boards', 'list', '--json']
   if (opts?.includeArchived) args.push('--all')
 
@@ -195,6 +204,7 @@ export async function listBoards(opts?: { includeArchived?: boolean }): Promise<
       maxBuffer: 50 * 1024 * 1024,
       timeout: 30000,
       ...execOpts,
+      ...(opts?.canonicalBoard ? { env: canonicalBoardEnv() } : {}),
     })
     return JSON.parse(stdout)
   } catch (err: any) {
@@ -516,12 +526,13 @@ export async function listTasks(opts?: {
   }
 }
 
-export async function getTask(taskId: string, opts?: KanbanBoardOptions): Promise<KanbanTaskDetail | null> {
+export async function getTask(taskId: string, opts?: KanbanBoardOptions & { canonicalBoard?: boolean }): Promise<KanbanTaskDetail | null> {
   try {
     const { stdout } = await execHermes([...boardArgs(opts?.board), 'show', taskId, '--json'], {
       maxBuffer: 50 * 1024 * 1024,
       timeout: 30000,
       ...execOpts,
+      ...(opts?.canonicalBoard ? { env: canonicalBoardEnv() } : {}),
     })
     const detail = JSON.parse(stdout) as KanbanTaskDetail
     const resolvedTaskId = detail.task?.id || taskId
@@ -537,6 +548,7 @@ export async function getTask(taskId: string, opts?: KanbanBoardOptions): Promis
     }))
     return detail
   } catch (err: any) {
+    if (opts?.canonicalBoard) throw new Error('Canonical Kanban task read unavailable')
     if (err.code === 1 || err.status === 1) return null
     logger.error(err, 'Hermes CLI: kanban show failed')
     throw new Error(`Failed to get kanban task: ${err.message}`)

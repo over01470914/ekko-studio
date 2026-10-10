@@ -1,3 +1,4 @@
+import { RunAdmissionDeferredError, type ReadOnlyDiagnosticInput } from '../contracts/runs/diagnostic'
 import { isNativeCodingAgent } from '../contracts/agents/native-coding-agents'
 import { withRunUsage, onRunUsageUpdated } from '../repositories/run-usage-store'
 import { agentFamilyForRuntime, isAgentRuntime } from '../contracts/agents/runtime'
@@ -76,7 +77,7 @@ import type {
   SessionState,
 } from '../services/chat-run/types'
 import { authenticateUserToken, inspectAppUserToken, isAuthEnabled, type AuthenticatedUser } from '../public/auth'
-import { userCanAccessProfile } from '../repositories/users-store'
+import { findUserById, userCanAccessProfile } from '../repositories/users-store'
 import { observeRunChatPetEvent } from '../public/pet-events'
 import { observeChatRunWebhookEvent, type ChatRunWebhookAgent } from '../services/webhooks'
 import { getAgentStatusSnapshot } from '../public/agent-status-registry'
@@ -939,6 +940,9 @@ export class ChatRunSocket {
       reasoning_effort?: string
       push_enabled?: boolean
     }) => {
+      // Type annotations do not filter JSON fields; diagnostics are host-admitted only.
+      const clientFields = data as unknown as Record<string, unknown>
+      for (const key of ['read_only_diagnostic', 'readOnlyDiagnostic', 'diagnosticOwnerId', 'internalOnEvent', 'onEvent']) delete clientFields[key]
       const pushSnapshot = data.push_snapshot
       delete data.push_snapshot
       let pushTargetId: string | undefined
@@ -1582,6 +1586,7 @@ export class ChatRunSocket {
       background_delegation_id?: string
       background_claim_id?: string
       autonomous?: boolean
+      read_only_diagnostic?: boolean
       onEvent?: (event: string, payload: any) => void
     },
     profile: string,
@@ -1603,7 +1608,7 @@ export class ChatRunSocket {
         this.mobileRunTargets.set(data.session_id, { ...target })
       } else this.mobileRunTargets.delete(data.session_id)
     }
-    const ekkoMcpServers = isEkkoAgentExecution(data)
+    const ekkoMcpServers = data.read_only_diagnostic ? {} : isEkkoAgentExecution(data)
       ? resolveChatEkkoMcpServers(profile, data.mcpServers || data.mcp_servers) || {}
       : undefined
     const mcpCapabilities = ekkoMcpServers
@@ -1879,11 +1884,78 @@ export class ChatRunSocket {
       .length
   }
 
+  private readonly diagnosticWakeIds = new Set<string>()
+
+  /** Internal admission only: no client can nominate a user, prompt or model. */
+  async enqueueReadOnlyDiagnostic(input: ReadOnlyDiagnosticInput): Promise<boolean> {
+    const allowed = () => {
+      const session = getSession(input.sessionId)
+      const user = findUserById(input.userId)
+      return !this.closing && !!session && !!user && user.status === 'active'
+        && String(session.user_id) === String(input.userId)
+        && (session.profile || 'default') === input.profile
+        && !session.is_archived && isBuiltinEkkoAgent(session.agent)
+        && userCanAccessProfile(input.userId, input.profile)
+    }
+    if (!allowed() || !/^[a-z][a-z0-9-]*:.{1,200}$/.test(input.queueId)
+      || !input.input || input.input.length > 6000 || input.instructions.length > 2000) return false
+    // Concurrent DB hydration must not overwrite an already admitted running state.
+    await this.sessionStateForBackground(input.sessionId)
+    const state = this.sessionMap.get(input.sessionId)
+    if (!state || !allowed()) return false
+    if (this.diagnosticWakeIds.has(input.queueId)) return true
+    const session = getSession(input.sessionId)!
+    const queued: QueuedRun = {
+      queue_id: input.queueId,
+      input: input.input,
+      displayInput: null,
+      storageMessage: '',
+      instructions: input.instructions,
+      profile: input.profile,
+      model: session.model || undefined,
+      provider: session.provider || undefined,
+      workspace: session.workspace,
+      source: 'builtin_agent',
+      codingAgentId: 'ekko-agent',
+      reasoningEffort: 'low',
+      autonomous: true,
+      readOnlyDiagnostic: true,
+      diagnosticOwnerId: input.userId,
+      internalOnEvent: (event, payload) => {
+        if (event === 'run.failed' || event === 'run.cancelled') this.diagnosticWakeIds.delete(input.queueId)
+        input.onEvent?.(event, payload)
+      },
+      authorize: async () => {
+        if (!allowed()) throw new Error('diagnostic_authorization_revoked')
+        await input.authorize?.()
+        if (!allowed()) throw new Error('diagnostic_authorization_revoked')
+      },
+    }
+    this.diagnosticWakeIds.add(input.queueId)
+    // Bounded process-local dedup; durable event identity is owned by the notifier.
+    if (this.diagnosticWakeIds.size > 1000) this.diagnosticWakeIds.delete(this.diagnosticWakeIds.values().next().value!)
+    state.queue.push(queued)
+    this.emitExternalEvent(input.sessionId, 'run.queued', {
+      event: 'run.queued', session_id: input.sessionId,
+      queue_length: state.queue.length, queued_messages: this.serializeQueuedMessages(state.queue),
+    })
+    if (!state.isWorking && !state.isAborting) {
+      // Never borrow a viewer's identity (shared session pages may have foreign sockets).
+      const socket = this.socketForBackgroundRun(input.sessionId)
+      const ownedSocket = Object.create(socket) as Socket
+      ownedSocket.data = { user: findUserById(input.userId) }
+      this.dequeueNextQueuedRun(ownedSocket, input.sessionId, input.profile)
+    }
+    return true
+  }
+
   private async sessionStateForBackground(sessionId: string): Promise<SessionState | null> {
     const existing = this.sessionMap.get(sessionId)
     if (existing) return existing
     if (!getSession(sessionId)) return null
     const loaded = await loadSessionStateFromDb(sessionId, this.sessionMap)
+    const raced = this.sessionMap.get(sessionId)
+    if (raced) return raced
     this.sessionMap.set(sessionId, loaded)
     return loaded
   }
@@ -2479,12 +2551,24 @@ export class ChatRunSocket {
   }
 
   private runQueuedItem(socket: Socket, sessionId: string, next: QueuedRun, fallbackProfile = 'default') {
+    if (next.readOnlyDiagnostic && next.diagnosticOwnerId != null) {
+      const ownedSocket = Object.create(socket) as Socket
+      ownedSocket.data = { user: findUserById(next.diagnosticOwnerId) }
+      socket = ownedSocket
+    }
     if (next.authorize) {
       const authorize = next.authorize
-      void authorize().then(() => this.runQueuedItem(socket, sessionId, { ...next, authorize: undefined }, fallbackProfile)).catch(() => {
+      void authorize().then(() => this.runQueuedItem(socket, sessionId, { ...next, authorize: undefined }, fallbackProfile)).catch((error: unknown) => {
         const state = this.sessionMap.get(sessionId)
         if (state) state.isWorking = false
-        this.nsp.to(`session:${sessionId}`).emit('run.failed', { event: 'run.failed', session_id: sessionId, queue_id: next.queue_id, error: 'share_access_denied' })
+        // Budget admission is a deferral, not revoked authorization or task failure.
+        const deferred = next.readOnlyDiagnostic && error instanceof RunAdmissionDeferredError
+        const event = deferred ? 'run.cancelled' : 'run.failed'
+        const failed = { event, session_id: sessionId, queue_id: next.queue_id,
+          ...(deferred ? { reason: 'diagnostic_budget_deferred' }
+            : { error: next.readOnlyDiagnostic ? 'diagnostic_authorization_revoked' : 'share_access_denied' }) }
+        this.nsp.to(`session:${sessionId}`).emit(event, failed)
+        next.internalOnEvent?.(event, failed)
         this.dequeueNextQueuedRun(socket, sessionId, fallbackProfile)
       })
       return
@@ -2537,11 +2621,15 @@ export class ChatRunSocket {
       background_delegation_id: next.backgroundDelegationId,
       background_claim_id: next.backgroundClaimId,
       autonomous: next.autonomous,
+      read_only_diagnostic: next.readOnlyDiagnostic,
+      onEvent: next.internalOnEvent,
     }, runProfile, skipUserMessage, backgroundContinuationContext, next.pushTargetId).catch(error => {
-      this.emitToSession(socket, sessionId, 'run.failed', {
+      const failed = {
         event: 'run.failed', session_id: sessionId, queue_id: next.queue_id,
-        error: error instanceof Error ? error.message : String(error),
-      })
+        error: next.readOnlyDiagnostic ? 'read_only_diagnostic_failed' : error instanceof Error ? error.message : String(error),
+      }
+      this.emitToSession(socket, sessionId, 'run.failed', failed)
+      next.internalOnEvent?.('run.failed', failed)
       // Preparation/validation errors happen before an execution owns the state.
       // They must release the reservation rather than strand all later messages.
       const current = this.sessionMap.get(sessionId)

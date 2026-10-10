@@ -15,6 +15,7 @@ import { usePageLoadingTask } from '@/composables/usePageLoading'
 import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
+import KanbanNotificationOverlay from './KanbanNotificationOverlay.vue';
 import VirtualMessageList from "./VirtualMessageList.vue";
 import MessageItem from "./MessageItem.vue";
 import { positionTaskPlansAtTurnEnd } from "@/utils/task-plan";
@@ -651,6 +652,7 @@ defineExpose({
 
 <template>
   <div class="message-list-shell" :aria-busy="isSearchLoading">
+    <KanbanNotificationOverlay :session-id="chatStore.activeSession?.isLocalOnly ? null : chatStore.activeSessionId" :profile="chatStore.activeSession?.profile || 'default'" />
     <VirtualMessageList
       v-if="!isSearchFetching"
       :key="activeSessionScrollKey || 'chat-empty'"

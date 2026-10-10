@@ -327,6 +327,19 @@ export default {
     deleteProfileTitle: '¿Eliminar perfil?', deleteProfileWarning: 'Los datos gestionados irán a la papelera. Los directorios personalizados se conservan.', clearCache: 'Borrar caché', clearPermissionAudit: 'Borrar registro de permisos', clearSiteData: 'Borrar datos de sitios', clearSiteDataWarning: 'Borra sesiones, cookies y almacenamiento local del perfil seleccionado.', dataCleared: 'Datos del navegador borrados', loadFailed: 'No se pudo iniciar el navegador integrado',
   },
   kanban: {
+    notifications: {
+      "title": "Notificaciones de tareas",
+      "unsubscribe": "Cancelar suscripción",
+      "createFromSession": "Crear tarea desde esta sesión",
+      "target": "Sesión de destino",
+      "chooseSession": "Elegir una sesión",
+      "wake": "Permitir activar el agente",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "Suscribirse",
+      "subscribed": "Suscripción guardada",
+      "loadFailed": "Notificaciones no disponibles; reintentando",
+      "saveFailed": "No se pudo guardar la suscripción"
+},
     board: {
       defaultArchiveUnavailable: 'El tablero predeterminado no se puede archivar',
     },

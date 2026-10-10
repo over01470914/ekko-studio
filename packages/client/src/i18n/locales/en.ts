@@ -1705,6 +1705,19 @@ export default {
 
   // Kanban
   kanban: {
+    notifications: {
+      "title": "Task notifications",
+      "unsubscribe": "Unsubscribe",
+      "createFromSession": "Create task from this session",
+      "target": "Report to session",
+      "chooseSession": "Choose a session",
+      "wake": "Allow agent wake",
+      "wakeHint": "Notifications use no model tokens. Optional tool-free diagnostics support Ekko sessions only, at unresolved capability/triage blockers—not every completion or block.",
+      "subscribe": "Subscribe",
+      "subscribed": "Subscribed",
+      "loadFailed": "Notifications unavailable; retrying",
+      "saveFailed": "Could not save subscription"
+},
     title: 'Kanban Board',
     createTask: 'New Task',
     noTasks: 'No tasks',
