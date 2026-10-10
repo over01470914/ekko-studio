@@ -125,6 +125,21 @@ if (mode === 'apply') {
 } else {
   saved = JSON.parse(await readFile(backup, 'utf8'))
   assert(saved.schema === snapshot.schema && saved.roomId === roomId && saved.userId === expectedUserId, 'Recovery identity mismatch')
+  // Fail closed before *any* restoration if a human changed an avatar after migration.
+  for (const entry of saved.profiles) {
+    const current = listed.find(p => p.name === entry.name)?.avatar ?? null
+    const expected = ref(idFor(entry.name))
+    const unchanged = JSON.stringify(current) === JSON.stringify(entry.avatar)
+      || (current?.type === 'image' && entry.avatar?.type === 'image' && current.url === entry.avatar.url)
+    assert(unchanged || (current?.type === 'library' && current.assetId === expected.assetId && current.revision === expected.revision), `Profile drift: ${entry.name}`)
+  }
+  const accountCurrent = JSON.parse(account.avatar || '{}')
+  assert(account.avatar === saved.account || (accountCurrent.type === 'library' && accountCurrent.assetId === accountAssetId && accountCurrent.revision === revision), 'Account avatar drift')
+  assert(member.id === saved.member?.id && (member.avatar === saved.member.avatar || member.avatar === roomRef(accountAssetId)), 'Member avatar drift')
+  for (const entry of saved.roomAgents) {
+    const current = snapshot.roomAgents.find(item => item.id === entry.id && item.agentId === entry.agentId)
+    assert(current && (current.avatar === entry.avatar || current.avatar === roomRef(idFor(entry.profile))), `Agent avatar drift: ${entry.profile}`)
+  }
   for (const entry of saved.profiles) {
     if (!profileNames.includes(entry.name)) throw new Error('Recovery contains unexpected profile')
     if (!entry.avatar) await request(profilePath(entry.name), 'DELETE')
@@ -148,10 +163,16 @@ for (const target of inventory.roster) {
 const profileReadback = (await request('/api/hermes/profiles')).profiles
 for (const target of oldProfiles) {
   const avatar = profileReadback.find(p => p.name === target.name)?.avatar
-  assert(mode === 'apply' ? avatar?.assetId === idFor(target.name) && avatar?.revision === revision : avatar?.type === saved.profiles.find(p => p.name === target.name)?.avatar?.type, `Profile readback mismatch ${target.name}`)
+  const original = saved?.profiles.find(p => p.name === target.name)?.avatar
+  const restored = !original ? !avatar
+    : original.type === 'image' ? avatar?.url === original.url
+    : original.type === 'generated' ? avatar?.type === 'generated' && avatar?.seed === original.seed
+    : original.type === 'library' ? avatar?.assetId === original.assetId && avatar?.revision === original.revision
+    : false
+  assert(mode === 'apply' ? avatar?.assetId === idFor(target.name) && avatar?.revision === revision : restored, `Profile readback mismatch ${target.name}`)
 }
 const accountReadback = (await request(avatarPath)).avatar
-assert(mode === 'apply' ? JSON.parse(accountReadback).assetId === accountAssetId : JSON.parse(accountReadback).type === JSON.parse(saved.account || JSON.stringify({ type: 'default' })).type, 'Account readback mismatch')
+assert(mode === 'apply' ? JSON.parse(accountReadback).assetId === accountAssetId : accountReadback === (saved.account || JSON.stringify({ type: 'default' })), 'Account readback mismatch')
 const memberReadback = await request(memberPath)
 assert(memberReadback.id === member.id && memberReadback.avatar === (mode === 'apply' ? roomRef(accountAssetId) : saved.member.avatar), 'Room member readback mismatch')
 console.log(JSON.stringify({ ...summary, recovery: backup, verifiedRoomAgents: after.length }))
