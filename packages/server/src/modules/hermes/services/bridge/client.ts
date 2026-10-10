@@ -42,6 +42,7 @@ export interface AgentBridgeRequestOptions {
 }
 
 export interface AgentBridgeChatOptions {
+  read_only_report?: boolean
   force_compress?: boolean
   /** Agent-session creation policy. False keeps delegate_task available but
    * makes background=true fall back to synchronous execution. */
@@ -521,6 +522,7 @@ export class AgentBridgeClient {
       ...(options.wait ? { wait: true } : {}),
       ...(options.timeout ? { timeout: options.timeout } : {}),
       ...(options.force_compress ? { force_compress: true } : {}),
+      ...(options.read_only_report ? { read_only_report: true } : {}),
       ...(options.background_delegation_enabled !== undefined
         ? { background_delegation_enabled: options.background_delegation_enabled }
         : {}),

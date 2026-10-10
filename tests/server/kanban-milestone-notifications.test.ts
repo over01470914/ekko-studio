@@ -42,6 +42,43 @@ describe('Studio Kanban notification persistence and diagnostic wakes', () => {
     service = await import('../../packages/server/src/modules/studio/services/notifications/kanban-milestones')
     store = await import('../../packages/server/src/modules/studio/repositories/kanban-session-notifications-store')
   })
+  it('reports opted-in Hermes completion once after grace without an open browser', async () => {
+    db.prepare("UPDATE sessions SET agent='hermes', source='cli' WHERE id=?").run(input.sessionId)
+    const reporting = service.createKanbanMilestoneService(source, wake)
+    await reporting.subscribe(user, { ...input, wakeEnabled: true })
+    task = { ...task, status: 'done', block_kind: null }
+    events = [event(1, 'completed')]
+    await reporting.pollOnce()
+    expect(wake).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(61_000)
+    await reporting.pollOnce()
+    await reporting.pollOnce()
+    expect(wake).toHaveBeenCalledTimes(1)
+    expect(wake.mock.calls[0][0]).toMatchObject({ sessionId: input.sessionId, kind: 'completed', eventIds: [1] })
+    const saved = await reporting.list(user, input.sessionId, input.profile)
+    expect(saved.notifications[0].wake_status).toBe('queued')
+  })
+  it('recognizes only completed report receipts in the same original session', async () => {
+    const sessions = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    const marker = 'read_only_report:kanban-diagnostic:one'
+    sessions.addMessage({ session_id: input.sessionId, role: 'assistant', content: 'partial', run_marker: marker })
+    expect(sessions.hasCompletedReadOnlyReport(input.sessionId, marker)).toBe(false)
+    sessions.addMessage({ session_id: input.sessionId, role: 'assistant', content: 'complete', run_marker: marker, finish_reason: 'read_only_report' })
+    expect(sessions.hasCompletedReadOnlyReport(input.sessionId, marker)).toBe(true)
+    expect(sessions.hasCompletedReadOnlyReport('other-session', marker)).toBe(false)
+  })
+  it('does not replay old Hermes completion when opt-in is enabled after delivery', async () => {
+    db.prepare("UPDATE sessions SET agent='hermes', source='cli' WHERE id=?").run(input.sessionId)
+    const reporting = service.createKanbanMilestoneService(source, wake)
+    await reporting.subscribe(user, input)
+    task = { ...task, status: 'done', block_kind: null }
+    events = [event(1, 'completed')]
+    await reporting.pollOnce()
+    await reporting.subscribe(user, { ...input, wakeEnabled: true })
+    await vi.advanceTimersByTimeAsync(61_000)
+    await reporting.pollOnce()
+    expect(wake).not.toHaveBeenCalled()
+  })
   afterEach(() => {
     db?.close(); rmSync(dir, { recursive: true, force: true })
     vi.doUnmock(base + 'infrastructure/database/index'); vi.resetModules(); vi.useRealTimers()

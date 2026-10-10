@@ -1019,6 +1019,14 @@ export function getMessageCount(sessionId: string): number {
   return row?.cnt ?? 0
 }
 
+export function hasCompletedReadOnlyReport(sessionId: string, runMarker: string): boolean {
+  if (!isSqliteAvailable()) return false
+  return Boolean(getDb()!.prepare(
+    `SELECT 1 FROM ${MESSAGES_TABLE} WHERE session_id = ? AND run_marker = ?
+      AND role = 'assistant' AND finish_reason = 'read_only_report' LIMIT 1`,
+  ).get(sessionId, runMarker))
+}
+
 export function getSessionContextMessages(
   sessionId: string,
   options: {

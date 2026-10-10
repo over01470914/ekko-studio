@@ -92,6 +92,7 @@ class BridgeServer:
                 source,
                 reasoning_effort,
                 background_delegation_enabled,
+                **({"read_only_report": True} if req.get("read_only_report") is True else {}),
             )
             if req.get("wait"):
                 timeout = float(req.get("timeout", 0) or 0)

@@ -156,9 +156,10 @@ test('a revoked reporting session stops polling without repeatedly showing permi
 })
 
 for (const diagnosticsEnabled of [false, true]) {
-test(`task drawer respects diagnostic capability ${diagnosticsEnabled} and subscribes explicitly`, async ({ page }) => {
+for (const runtime of ['hermes', 'ekko-agent']) {
+test(`task drawer respects diagnostic capability ${diagnosticsEnabled} for ${runtime} and subscribes explicitly`, async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  await mockHermesApi(page, { sessions, kanbanReporting: { enabled: true, diagnosticsEnabled } })
+  await mockHermesApi(page, { sessions: sessions.map(session => ({ ...session, agent: runtime, source: runtime === 'hermes' ? 'cli' : 'builtin_agent' })), kanbanReporting: { enabled: true, diagnosticsEnabled } })
   const task = { id: 'task-any', title: 'Subscribe task', body: '', assignee: null, status: 'todo', priority: 1, created_at: 100, runs: [] }
   await page.route(/\/api\/hermes\/kanban(?:\/|\?|$)/, async route => {
     const path = new URL(route.request().url()).pathname
@@ -198,6 +199,42 @@ test(`task drawer respects diagnostic capability ${diagnosticsEnabled} and subsc
   }
 })
 }
+}
+
+test('notification trigger pulses on changes, not initial load or unchanged polling', async ({ page }) => {
+  await page.clock.install()
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await mockHermesApi(page, { sessions, kanbanReporting: { enabled: true, diagnosticsEnabled: true } })
+  await page.addInitScript(payload => { (window as any).__PW_CHAT_SOCKET_RESUMES__ = payload }, resumes)
+  await mockChatSocket(page)
+  let subscribed = false, completed = false, requests = 0
+  await page.route(/\/api\/studio\/sessions\/[^/]+\/kanban-notifications/, route => {
+    requests++
+    return route.fulfill({ json: {
+      subscriptions: subscribed ? [{ id: 1, board: 'test', task_id: 'task-1', wake_enabled: false }] : [],
+      notifications: [{ id: 1, board: 'test', task_id: 'task-1', kind: completed ? 'completed' : 'created', label: completed ? 'Task completed' : 'Task created', occurred_at: 123 }],
+    } })
+  })
+  await page.goto('/#/hermes/session/report-alpha')
+  const content = page.locator('.notification-content')
+  await expect(content.locator('.notice-count')).toHaveText('1')
+  await expect(content).toHaveAttribute('data-change-version', '0')
+  await expect.poll(() => requests).toBe(1)
+  subscribed = true
+  await page.clock.fastForward(10_001)
+  await expect(content).toHaveAttribute('data-change-version', '1')
+  await expect(content).toHaveClass(/is-updated/)
+  await expect(content).toHaveCSS('animation-duration', '1.4s')
+  await page.clock.fastForward(10_001)
+  await expect.poll(() => requests).toBe(3)
+  await expect(content).toHaveAttribute('data-change-version', '1')
+  completed = true
+  await page.clock.fastForward(10_001)
+  await expect(content).toHaveAttribute('data-change-version', '2')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(content).toHaveCSS('animation-name', 'none')
+  await expect(page.getByTestId('kanban-notification-overlay')).not.toBeVisible()
+})
 
 test('disabled reporting neither polls notifications nor exposes diagnostic controls', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')

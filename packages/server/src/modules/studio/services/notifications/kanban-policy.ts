@@ -33,7 +33,7 @@ export function kanbanPlainText(value: unknown, max = 320): string {
   return value.slice(0, 4096).replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, ' ')
     .replace(/[`*_#\[\]\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
-export function kanbanPolicy(event: KanbanMilestoneEvent, task: KanbanTaskRef) {
+export function kanbanPolicy(event: KanbanMilestoneEvent, task: KanbanTaskRef, proactive = false) {
   const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
     ? event.payload as Record<string, unknown> : {}
   const block = typeof payload.block_kind === 'string' ? payload.block_kind
@@ -42,9 +42,22 @@ export function kanbanPolicy(event: KanbanMilestoneEvent, task: KanbanTaskRef) {
     && (block === 'dependency' || block === 'transient'))) return null
   const label = event.kind === 'completed' && event.from_review ? 'QA PASS: task completed' : labels[event.kind]
   if (!label) return null
-  const wake = !task.creator_task_id && block !== 'needs_input' && event.kind !== 'needs_input' && !['created', 'completed', 'review', 'review_requested', 'changes_requested'].includes(event.kind)
-    && (diagnostic.has(event.kind) || diagnostic.has(block || ''))
+  const wake = !task.creator_task_id && (proactive
+    ? ['completed', 'needs_input', 'review_requested'].includes(event.kind)
+      || (event.kind === 'blocked' && block === 'needs_input')
+    : block !== 'needs_input' && event.kind !== 'needs_input' && !['created', 'completed', 'review', 'review_requested', 'changes_requested'].includes(event.kind)
+      && (diagnostic.has(event.kind) || diagnostic.has(block || '')))
   return { label, summary: kanbanPlainText(payload.summary ?? payload.reason ?? payload.message), wake }
+}
+export function kanbanWakeIsCurrent(kind: string, task: KanbanTaskRef, proactive = false): boolean {
+  if (task.creator_task_id) return false
+  if (proactive) {
+    if (kind === 'completed') return ['done', 'completed'].includes(task.status || '')
+    if (kind === 'review_requested') return ['review', 'in_review'].includes(task.status || '')
+    return ['needs_input', 'blocked'].includes(kind)
+      && (task.status === 'needs_input' || (task.status === 'blocked' && task.block_kind === 'needs_input'))
+  }
+  return !kanbanRecovered(task) && !['needs_input', 'dependency', 'transient'].includes(task.block_kind || '')
 }
 export function kanbanRecovered(task: KanbanTaskRef): boolean {
   return ['ready', 'running', 'done', 'completed'].includes(task.status || '')

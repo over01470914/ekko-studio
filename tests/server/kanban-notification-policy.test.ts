@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { kanbanPolicy, kanbanPlainText, kanbanRecovered, kanbanStateEvent, type KanbanMilestoneEvent } from '../../packages/server/src/modules/studio/services/notifications/kanban-policy'
+import { kanbanPolicy, kanbanPlainText, kanbanRecovered, kanbanStateEvent, kanbanWakeIsCurrent, type KanbanMilestoneEvent } from '../../packages/server/src/modules/studio/services/notifications/kanban-policy'
 const event = (kind: string, payload?: unknown): KanbanMilestoneEvent => ({ id: 1, kind, occurred_at: 1, from_review: false, payload })
 const task = { id: 't', assignee: 'worker', status: 'blocked', block_kind: 'capability' }
 describe('fixed Kanban notification/wake policy', () => {
+  it('allows opted-in Hermes milestone reports without enabling repairs or generic state wakes', () => {
+    for (const kind of ['completed', 'needs_input', 'review_requested'])
+      expect(kanbanPolicy(event(kind), task, true)?.wake).toBe(true)
+    expect(kanbanPolicy(event('blocked', { kind: 'needs_input' }), task, true)?.wake).toBe(true)
+    for (const kind of ['created', 'capability', 'failed', 'gave_up'])
+      expect(kanbanPolicy(event(kind), task, true)?.wake).toBe(false)
+    expect(kanbanPolicy(event('completed'), { ...task, creator_task_id: 'parent' }, true)?.wake).toBe(false)
+    expect(kanbanWakeIsCurrent('completed', { ...task, status: 'done' }, true)).toBe(true)
+    expect(kanbanWakeIsCurrent('completed', { ...task, status: 'running' }, true)).toBe(false)
+    expect(kanbanWakeIsCurrent('needs_input', { ...task, block_kind: 'needs_input' }, true)).toBe(true)
+    expect(kanbanWakeIsCurrent('needs_input', { ...task, status: 'done', block_kind: 'needs_input' }, true)).toBe(false)
+  })
   it.each(['heartbeat', 'claimed', 'dependency', 'transient'])('ignores %s', kind => {
     expect(kanbanPolicy(event(kind), task)).toBeNull()
   })

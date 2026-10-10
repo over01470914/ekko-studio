@@ -931,11 +931,24 @@ describe('Kanban internal diagnostic admission', () => {
     expect(handle.mock.calls[0][1].input).toContain('untrusted evidence')
     expect(authorize).toHaveBeenCalledOnce()
   })
-  it('rejects missing, foreign, archived or non-Ekko sessions without creating one', async () => {
+  it('queues Hermes reports through the native runtime without changing session identity', async () => {
+    const { server, handle } = await harness()
+    const { getSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    vi.mocked(getSession).mockReturnValue({ id: 'session-1', profile: 'default', user_id: '1',
+      agent: 'hermes', source: 'cli', model: 'model-a', provider: 'provider-a', is_archived: 0 } as any)
+    expect(await server.enqueueReadOnlyDiagnostic(input)).toBe(true)
+    await vi.waitFor(() => expect(handle).toHaveBeenCalledOnce())
+    expect(handle.mock.calls[0][1]).toMatchObject({
+      source: 'cli', read_only_diagnostic: true, display_input: null,
+      model: 'model-a', provider: 'provider-a',
+    })
+    expect(handle.mock.calls[0][1].coding_agent_id).toBeUndefined()
+  })
+  it('rejects missing, foreign, archived or unsupported sessions without creating one', async () => {
     const { server, state, handle } = await harness()
     const { getSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
     for (const session of [null, { user_id: '2', agent: 'ekko-agent' },
-      { user_id: '1', agent: 'hermes' }, { user_id: '1', agent: 'ekko-agent', is_archived: 1 }]) {
+      { user_id: '1', agent: 'codex' }, { user_id: '1', agent: 'ekko-agent', is_archived: 1 }]) {
       vi.mocked(getSession).mockReturnValue(session as any)
       expect(await server.enqueueReadOnlyDiagnostic(input)).toBe(false)
     }

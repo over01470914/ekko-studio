@@ -1712,7 +1712,7 @@ export class ChatRunSocket {
 
       const planContext = mcpCapabilities.interaction ? this.beginTaskPlanRun(data.session_id, profile) : undefined
       if (planContext) data.instructions = [data.instructions, taskPlanRunInstruction()].filter(Boolean).join('\n\n')
-      let fullInstructions = data.instructions
+      let fullInstructions = data.read_only_diagnostic ? data.instructions || '' : data.instructions
         ? `${getSystemPrompt(undefined, { source, mcpCapabilities })}\n${data.instructions}`
         : getSystemPrompt(undefined, { source, mcpCapabilities })
 
@@ -1888,13 +1888,15 @@ export class ChatRunSocket {
 
   /** Internal admission only: no client can nominate a user, prompt or model. */
   async enqueueReadOnlyDiagnostic(input: ReadOnlyDiagnosticInput): Promise<boolean> {
+    const expectedAgent = getSession(input.sessionId)?.agent
     const allowed = () => {
       const session = getSession(input.sessionId)
       const user = findUserById(input.userId)
       return !this.closing && !!session && !!user && user.status === 'active'
         && String(session.user_id) === String(input.userId)
         && (session.profile || 'default') === input.profile
-        && !session.is_archived && isBuiltinEkkoAgent(session.agent)
+        && !session.is_archived && session.agent === expectedAgent
+        && (session.agent === 'hermes' || isBuiltinEkkoAgent(session.agent))
         && activeUserCanAccessProfile(input.userId, input.profile)
     }
     if (!allowed() || !/^[a-z][a-z0-9-]*:.{1,200}$/.test(input.queueId)
@@ -1915,8 +1917,8 @@ export class ChatRunSocket {
       model: session.model || undefined,
       provider: session.provider || undefined,
       workspace: session.workspace,
-      source: 'builtin_agent',
-      codingAgentId: 'ekko-agent',
+      source: session.agent === 'hermes' ? 'cli' : 'builtin_agent',
+      codingAgentId: session.agent === 'hermes' ? undefined : 'ekko-agent',
       reasoningEffort: 'low',
       autonomous: true,
       readOnlyDiagnostic: true,

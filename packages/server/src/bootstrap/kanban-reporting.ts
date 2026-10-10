@@ -3,7 +3,7 @@ import { listBoards, getTask } from '../modules/hermes/services/kanban/kanban-se
 import { latestNativeKanbanEventId, readNativeKanbanEvents, readNativeKanbanTaskHints, listNativeKanbanOrigins, nativeKanbanTransitionAfter } from '../modules/hermes/services/kanban/kanban-event-reader'
 import { createKanbanMilestoneService, setKanbanMilestoneService, type KanbanDiagnosticWake } from '../modules/studio/services/notifications/kanban-milestones'
 import { createKanbanDiagnosticDispatcher } from '../modules/studio/services/notifications/kanban-diagnostic-dispatcher'
-import { kanbanRecovered } from '../modules/studio/services/notifications/kanban-policy'
+import { kanbanWakeIsCurrent } from '../modules/studio/services/notifications/kanban-policy'
 import { hasKanbanDiagnosticEvidence, listKanbanSessionSubscriptions } from '../modules/studio/repositories/kanban-session-notifications-store'
 import { getSession } from '../modules/studio/repositories/session-store'
 import { findUserById, activeUserCanAccessProfile } from '../modules/studio/repositories/users-store'
@@ -35,7 +35,7 @@ export function startKanbanReporting(queue: ChatRunSocket): () => void {
     const user = findUserById(input.userId)
     if (!session || !user || user.status !== 'active' || session.is_archived
       || String(session.user_id) !== String(input.userId) || session.profile !== input.profile
-      || !isBuiltinEkkoAgent(session.agent) || !activeUserCanAccessProfile(input.userId, input.profile)) return false
+      || (session.agent !== 'hermes' && !isBuiltinEkkoAgent(session.agent)) || !activeUserCanAccessProfile(input.userId, input.profile)) return false
     const sub = listKanbanSessionSubscriptions(input.sessionId, input.userId).find(s =>
       s.active && s.wake_enabled && s.profile === input.profile && s.board === input.board && s.task_id === input.taskId)
     if (!sub || input.eventIds.some(id => id < sub.state_event_id)) return false
@@ -44,11 +44,11 @@ export function startKanbanReporting(queue: ChatRunSocket): () => void {
     if(!board || nativeKanbanTransitionAfter(board,input.taskId,Math.max(...input.eventIds))) return false
     const detail = await source.getTask(input.taskId, input.board)
     if (!detail || !detail.task.assignee || !activeUserCanAccessProfile(input.userId, detail.task.assignee)
-      || detail.task.creator_task_id || kanbanRecovered(detail.task)
-      || ['needs_input','dependency','transient'].includes(detail.task.block_kind || '')) return false
+      || !kanbanWakeIsCurrent(input.kind, detail.task, session.agent === 'hermes')) return false
     // Repeat cheap checks after native IO; dequeue also invokes this validation.
     const current = getSession(input.sessionId)
     return !!current && String(current.user_id) === String(input.userId) && !current.is_archived
+      && current.agent === session.agent
       && current.profile === input.profile && findUserById(input.userId)?.status === 'active'
       && activeUserCanAccessProfile(input.userId, input.profile)
       && !!listKanbanSessionSubscriptions(input.sessionId, input.userId).find(s => s.id === sub.id && s.active && s.wake_enabled)

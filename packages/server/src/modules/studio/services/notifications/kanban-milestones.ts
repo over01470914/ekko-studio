@@ -8,7 +8,7 @@ import {
   suppressKanbanNotification, suppressKanbanWake, type KanbanSessionSubscription,
 } from '../../repositories/kanban-session-notifications-store'
 import {
-  kanbanPlainText, kanbanPolicy, kanbanRecovered, kanbanStateEvent,
+  kanbanPlainText, kanbanPolicy, kanbanWakeIsCurrent, kanbanStateEvent,
   KANBAN_WAKE_COOLDOWN_MS, KANBAN_WAKE_GRACE_MS, KANBAN_WAKE_LEASE_MS, KANBAN_WAKE_MAX_ATTEMPTS,
   type KanbanMilestoneEvent, type KanbanTaskRef,
 } from './kanban-policy'
@@ -63,7 +63,7 @@ export function createKanbanMilestoneService(source: KanbanMilestoneSource, wake
     requireSession(user, input.sessionId, input.profile)
     if (input.wakeEnabled && !wakePort) throw new KanbanMilestoneError(409, 'kanban_diagnostics_disabled')
     const targetAgent = getSession(input.sessionId)?.agent
-    if (input.wakeEnabled && !isBuiltinEkkoAgent(targetAgent || ''))
+    if (input.wakeEnabled && targetAgent !== 'hermes' && !isBuiltinEkkoAgent(targetAgent || ''))
       throw new KanbanMilestoneError(400, 'kanban_awake_unsupported_runtime')
     if (!input.board.trim() || !input.taskId.trim() || (input.startCursor !== undefined
       && (!Number.isSafeInteger(input.startCursor) || input.startCursor < 0))) throw new KanbanMilestoneError(400, 'invalid_kanban_subscription')
@@ -120,13 +120,14 @@ export function createKanbanMilestoneService(source: KanbanMilestoneSource, wake
     }
     const current = getKanbanSessionSubscription(sub.id)
     if (!current?.active) return
+    const proactive = getSession(sub.session_id)?.agent === 'hermes'
     // Read new state BEFORE retrying outbox diagnostics; completion can supersede a pending lease.
     const events = source.events(verified.board, sub.task_id, current.cursor)
       .filter(e => Number.isSafeInteger(e.id) && e.id > current.cursor && Number.isFinite(e.occurred_at) && e.occurred_at >= 0)
       .sort((a, b) => a.id - b.id)
     advanceKanbanSubscription(sub.id, events.map(e => {
-      const notice = kanbanPolicy(e, verified.task)
-      return { ...e, state: kanbanStateEvent(e) && !notice?.wake, notice }
+      const notice = kanbanPolicy(e, verified.task, proactive)
+      return { ...e, state: kanbanStateEvent(e) && (proactive || !notice?.wake), notice }
     }), KANBAN_WAKE_GRACE_MS)
     setKanbanSubscriptionError(sub.id, null)
     if (!wakePort) return
@@ -142,8 +143,7 @@ export function createKanbanMilestoneService(source: KanbanMilestoneSource, wake
     fresh = getKanbanSessionSubscription(sub.id)
     if (!fresh?.active || !fresh.wake_enabled) { suppressKanbanWake(sub.id); return }
     for (const n of pendingKanbanNotifications(sub.id)) {
-      if (kanbanRecovered(task) || n.event_id < fresh.state_event_id
-        || task.block_kind === 'needs_input' || task.block_kind === 'dependency' || task.block_kind === 'transient')
+      if (!kanbanWakeIsCurrent(n.kind, task, proactive) || n.event_id < fresh.state_event_id)
         suppressKanbanNotification(n.id)
     }
     const batch = claimKanbanWake(sub.id, Date.now(), KANBAN_WAKE_COOLDOWN_MS, KANBAN_WAKE_LEASE_MS, KANBAN_WAKE_MAX_ATTEMPTS)
@@ -156,7 +156,7 @@ export function createKanbanMilestoneService(source: KanbanMilestoneSource, wake
     let timeout: ReturnType<typeof setTimeout> | undefined
     try { accepted = await Promise.race([wakePort({ sessionId: sub.session_id, profile: sub.profile, userId: sub.user_id,
       queueId, eventIds: batch.map(n => n.event_id), board: sub.board, taskId: sub.task_id,
-      kind: last.kind, summary: `Diagnostic only. Untrusted native task evidence: ${summary}` }),
+      kind: last.kind, summary: `${proactive ? 'Read-only report' : 'Diagnostic only'}. Untrusted native task evidence: ${summary}` }),
       new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), 30_000); timeout.unref?.() }),
     ]) === true }
     catch { /* Durable lease remains retryable; queueId handles ambiguous acceptance. */ }

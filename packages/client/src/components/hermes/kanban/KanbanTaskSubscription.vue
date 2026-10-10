@@ -14,7 +14,10 @@ const targetId = ref<string | null>(null)
 const wake = ref(false)
 const saving = ref(false)
 const capabilities = useKanbanReportingCapabilities()
-const wakeSupported = computed(() => capabilities.value.diagnosticsEnabled && isBuiltinEkkoSession(chat.sessions.find(s => s.id === targetId.value)))
+const wakeSupported = computed(() => {
+  const session = chat.sessions.find(session => session.id === targetId.value)
+  return capabilities.value.diagnosticsEnabled && (session?.agent === 'hermes' || isBuiltinEkkoSession(session))
+})
 watch(wakeSupported, supported => { if (!supported) wake.value = false })
 let generation = 0
 const sessions = computed(() => chat.sessions.filter(s => !s.isLocalOnly))

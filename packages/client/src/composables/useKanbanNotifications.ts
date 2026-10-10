@@ -7,6 +7,7 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
   const error = ref(false)
   const unavailable = ref(false)
   const busy = ref(false)
+  const changeVersion = ref(0)
   let generation = 0
   let refresh: (() => Promise<void>) | undefined
   watch(target, (scope, _, cleanup) => {
@@ -15,6 +16,8 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
     error.value = false
     unavailable.value = false
     busy.value = false
+    changeVersion.value = 0
+    let previousSnapshot: string | undefined
     refresh = undefined
     if (!scope) return
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -28,6 +31,18 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
       try {
         const result = await fetchKanbanSessionNotifications(scope.id, scope.profile, controller.signal)
         if (current !== generation || requestId !== sequence) return
+        const snapshot = JSON.stringify({
+          subscriptions: result.subscriptions.map(subscription => [
+            subscription.id, subscription.board, subscription.task_id,
+            subscription.active !== false, subscription.wake_enabled === true,
+          ]).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+          notifications: result.notifications.map(notice => [
+            notice.id, notice.board, notice.task_id, notice.kind, notice.label,
+            notice.occurred_at, notice.summary ?? '',
+          ]).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+        })
+        if (previousSnapshot !== undefined && snapshot !== previousSnapshot) changeVersion.value++
+        previousSnapshot = snapshot
         state.value = result
         error.value = false
       } catch (cause) {
@@ -64,5 +79,5 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
       if (current === generation) busy.value = false
     }
   }
-  return { state, error, unavailable, busy, unsubscribe }
+  return { state, error, unavailable, busy, unsubscribe, changeVersion }
 }

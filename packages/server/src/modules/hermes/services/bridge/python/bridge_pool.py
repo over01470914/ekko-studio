@@ -155,6 +155,7 @@ class RunRecord:
     deltas: list[str] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     worker_thread: threading.Thread | None = field(default=None, repr=False)
+    read_only_report: bool = False
 
 
 @dataclass
@@ -176,6 +177,7 @@ class AgentSession:
     boundary_reached_run_id: str | None = None
     boundary_supported: bool = False
     boundary_error: str | None = None
+    report_agent: Any = None
 
 
 class AgentPool:
@@ -1761,6 +1763,7 @@ class AgentPool:
         source: str | None = None,
         reasoning_effort: str | None = None,
         background_delegation_enabled: bool | None = None,
+        read_only_report: bool = False,
     ) -> RunRecord:
         session = self.get_or_create(
             session_id,
@@ -1783,7 +1786,7 @@ class AgentPool:
             if session.running:
                 raise RuntimeError(f"session {session_id} is already running")
             run_id = uuid.uuid4().hex
-            record = RunRecord(run_id=run_id, session_id=session_id)
+            record = RunRecord(run_id=run_id, session_id=session_id, read_only_report=read_only_report)
             with self._lock:
                 self._runs[run_id] = record
             session.running = True
@@ -1795,7 +1798,7 @@ class AgentPool:
             session_cwd_bound = False
             try:
                 session_cwd_bound = _bind_session_workspace_cwd(session.session_id, workspace)
-                context_event = self._bridge_context_ready_event(session, instructions, profile)
+                context_event = None if read_only_report else self._bridge_context_ready_event(session, instructions, profile)
                 if context_event:
                     record.events.append(_jsonable(context_event))
             except BaseException as exc:
@@ -1918,8 +1921,8 @@ class AgentPool:
                     pass
                 self._prepersist_user_message(session, message, storage_message, conversation_history, profile, source)
                 db_count_after_prepersist = self._session_db_message_count(session.session_id, profile)
-                agent_message = self._prepend_pending_model_switch_note(session, message)
-                if force_compress:
+                agent_message = message if record.read_only_report else self._prepend_pending_model_switch_note(session, message)
+                if force_compress and not record.read_only_report:
                     compress = getattr(session.agent, "_compress_context", None)
                     if callable(compress):
                         compressed_history, compressed_system = compress(
@@ -1944,7 +1947,7 @@ class AgentPool:
                 # Mutates session.agent.reasoning_config in place — restored after run.
                 _saved_reasoning_config = None
                 _did_override_reasoning = False
-                if reasoning_effort:
+                if reasoning_effort and not record.read_only_report:
                     try:
                         from hermes_constants import parse_reasoning_effort
                         override_cfg = parse_reasoning_effort(str(reasoning_effort).strip())
@@ -1958,10 +1961,17 @@ class AgentPool:
                         # Non-fatal: fall through to default reasoning_config
                         pass
                 try:
-                    result = session.agent.run_conversation(
-                        agent_message,
-                        **kwargs,
-                    )
+                    if record.read_only_report:
+                        from bridge_report import run_read_only_report
+                        result = run_read_only_report(
+                            session.agent, agent_message, instructions, conversation_history,
+                            stream_callback, lambda agent: setattr(session, "report_agent", agent),
+                        )
+                    else:
+                        result = session.agent.run_conversation(
+                            agent_message,
+                            **kwargs,
+                        )
                 finally:
                     if _did_override_reasoning:
                         session.agent.reasoning_config = _saved_reasoning_config
@@ -1990,7 +2000,7 @@ class AgentPool:
                     or ""
                 ).strip()
                 title_db = self._db.get_for_profile(profile)
-                if title_db is not None and final_response and not result.get("failed") and not result.get("partial"):
+                if not record.read_only_report and title_db is not None and final_response and not result.get("failed") and not result.get("partial"):
                     try:
                         from agent.title_generator import maybe_auto_title
 
@@ -2024,7 +2034,9 @@ class AgentPool:
                     except Exception:
                         pass
                 with session.lock:
-                    if isinstance(result.get("messages"), list):
+                    if record.read_only_report:
+                        session.history.append({"role": "assistant", "content": final_response})
+                    elif isinstance(result.get("messages"), list):
                         session.history = result["messages"]
                     record.result = result
                     record.ended_at = time.time()
@@ -2044,7 +2056,7 @@ class AgentPool:
             except Exception as exc:
                 with session.lock:
                     boundary_interrupted = self._boundary_result_for_run(session, record.run_id)
-                if not tail_synced:
+                if not tail_synced and not record.read_only_report:
                     try:
                         fallback_result = result_for_tail_sync or self._result_from_agent_messages_for_sync(session)
                         if fallback_result is not None:
@@ -2225,7 +2237,7 @@ class AgentPool:
         self._settle_interrupted_background_tasks(session_id)
         if not hasattr(session.agent, "interrupt"):
             raise RuntimeError("agent does not support interrupt")
-        session.agent.interrupt(message)
+        (session.report_agent or session.agent).interrupt(message)
         self._cancel_pending_approvals_for_generation(session_id, interrupted_run_id)
         deadline = time.time() + 10.0
         synced = False
@@ -2887,7 +2899,7 @@ class AgentPool:
             try:
                 with session.lock:
                     self._cancel_boundary_run(session)
-                session.agent.interrupt("Session destroyed")
+                (session.report_agent or session.agent).interrupt("Session destroyed")
             except Exception:
                 pass
         return {
@@ -2919,7 +2931,7 @@ class AgentPool:
             try:
                 with session.lock:
                     self._cancel_boundary_run(session)
-                session.agent.interrupt("Agent bridge shutting down")
+                (session.report_agent or session.agent).interrupt("Agent bridge shutting down")
                 interrupted_sessions += 1
             except Exception:
                 pass

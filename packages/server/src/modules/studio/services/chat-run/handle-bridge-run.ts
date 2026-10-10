@@ -1,4 +1,5 @@
 import { completeRunUsage } from '../../repositories/run-usage-store'
+import { hasCompletedReadOnlyReport } from '../../repositories/session-store'
 import { hermesStudioMcpCapabilities } from './studio-mcp'
 import { withTaskPlanTurnContext } from '../task-plan-runs'
 /**
@@ -90,6 +91,7 @@ function parseBackgroundDelegation(
 }
 
 interface BridgeRunMetadata {
+  readOnlyReport?: boolean
   autonomous?: boolean
   delegationId?: string
   queueId?: string
@@ -464,7 +466,7 @@ async function ensureBridgeFixedContext(args: {
 export async function handleBridgeRun(
   nsp: ReturnType<Server['of']>,
   socket: Socket,
-  data: { task_plan_context_id?: string; input: string | ContentBlock[]; display_input?: string | ContentBlock[] | null; display_role?: 'user' | 'command'; storage_message?: string; session_id?: string; model?: string; provider?: string; model_groups?: RunModelGroup[]; instructions?: string; workspace?: string | null; category_id?: number | null; source?: string; session_source?: 'global_agent' | 'workflow' | 'group_chat'; queue_id?: string; peerExcludeSocketId?: string; reasoning_effort?: string; push_enabled?: boolean; background_delegation_enabled?: boolean; one_shot_model?: boolean; background_delegation_id?: string; background_claim_id?: string; autonomous?: boolean; onEvent?: (event: string, payload: any) => void },
+  data: { read_only_diagnostic?: boolean; task_plan_context_id?: string; input: string | ContentBlock[]; display_input?: string | ContentBlock[] | null; display_role?: 'user' | 'command'; storage_message?: string; session_id?: string; model?: string; provider?: string; model_groups?: RunModelGroup[]; instructions?: string; workspace?: string | null; category_id?: number | null; source?: string; session_source?: 'global_agent' | 'workflow' | 'group_chat'; queue_id?: string; peerExcludeSocketId?: string; reasoning_effort?: string; push_enabled?: boolean; background_delegation_enabled?: boolean; one_shot_model?: boolean; background_delegation_id?: string; background_claim_id?: string; autonomous?: boolean; onEvent?: (event: string, payload: any) => void },
   profile: string,
   sessionMap: Map<string, SessionState>,
   bridge: AgentBridgeClient,
@@ -481,6 +483,16 @@ export async function handleBridgeRun(
   const backgroundDelegationEnabled = data.background_delegation_enabled !== false
   if (!session_id) {
     socket.emit('run.failed', { event: 'run.failed', queue_id: data.queue_id, error: 'session_id is required for cli source' })
+    return
+  }
+  const reportMarker = data.read_only_diagnostic && data.queue_id ? `read_only_report:${data.queue_id}` : undefined
+  if (reportMarker && hasCompletedReadOnlyReport(session_id, reportMarker)) {
+    const current = sessionMap.get(session_id)
+    if (current) current.isWorking = false
+    const payload = { event: 'run.completed', session_id, queue_id: data.queue_id, deduplicated: true }
+    nsp.to(`session:${session_id}`).emit('run.completed', payload)
+    data.onEvent?.('run.completed', payload)
+    dequeueNextQueuedRun(socket, session_id, profile)
     return
   }
   const socketUser = socket.data.user as AuthenticatedUser | undefined
@@ -506,9 +518,9 @@ export async function handleBridgeRun(
   const requestedWorkspace = callbackContext
     ? callbackContext.workspace
     : sessionRow?.workspace || data.workspace
-  const workspace = await ensureHermesRunWorkspace(profile, requestedWorkspace)
+  const workspace = data.read_only_diagnostic ? requestedWorkspace || undefined : await ensureHermesRunWorkspace(profile, requestedWorkspace)
   const shouldEmitWorkspaceUpdate = Boolean(workspace && !sessionRow?.workspace)
-  if (sessionRow && !sessionRow.workspace) updateSession(session_id, { workspace })
+  if (sessionRow && !sessionRow.workspace && !data.read_only_diagnostic) updateSession(session_id, { workspace })
   const sessionModel = callbackContext?.model || sessionRow?.model || ''
   const sessionProvider = callbackContext?.provider || sessionRow?.provider || ''
   const selectedModelConfig = await resolveBridgeRunModelConfig({
@@ -538,21 +550,21 @@ export async function handleBridgeRun(
     await saveEnvValueForProfile(profile, 'ANTHROPIC_TOKEN', credentials.apiKey)
   }
   const resolvedProvider = selectedProvider === 'claude-oauth' ? 'anthropic' : selectedProvider
-  if (sessionRow && !callbackContext && data.one_shot_model !== true) {
+  if (sessionRow && !callbackContext && data.one_shot_model !== true && !data.read_only_diagnostic) {
     const updates: { model?: string; provider?: string } = {}
     if (resolvedModel && sessionRow.model !== resolvedModel) updates.model = resolvedModel
     if (selectedProvider && sessionRow.provider !== selectedProvider) updates.provider = selectedProvider
     if (Object.keys(updates).length > 0) updateSession(session_id, updates)
   }
-  await writeModelRunProfileToken(socketUser, profile)
+  if (!data.read_only_diagnostic) await writeModelRunProfileToken(socketUser, profile)
   const runPrompt = [
     'When calling Hermes Web UI endpoints from tools or skills, include the current Hermes profile as the X-Hermes-Profile header if the endpoint supports profile-scoped behavior.',
   ].filter(Boolean).join('\n')
-  if (!callbackContext?.instructions) {
+  if (!callbackContext?.instructions && !data.read_only_diagnostic) {
     fullInstructions = `\n${runPrompt}\n${fullInstructions}`
   }
 
-  const runMarker = `cli_run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  const runMarker = reportMarker || `cli_run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   const now = Math.floor(Date.now() / 1000)
   let state = sessionMap.get(session_id)
   if (!state) {
@@ -721,7 +733,10 @@ export async function handleBridgeRun(
   state.bridgeRunPollMarker = runMarker
   // Inside the run's failure cleanup: a pre-run error (e.g. context window too small) must settle this run.
   try {
-    const history = callbackContext
+    const history = data.read_only_diagnostic
+      ? state.messages.filter(message => message.role === 'user' || message.role === 'assistant')
+        .slice(-6).map(message => ({ role: message.role, content: contentBlocksToString(message.content).slice(0, 500) } as ChatMessage))
+      : callbackContext
       ? structuredClone(callbackContext.messages)
       : await buildCompressedHistory(
         session_id, profile,
@@ -765,6 +780,7 @@ export async function handleBridgeRun(
       : input
     const bridgeInput = withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id)
     const runMetadata: BridgeRunMetadata = {
+      readOnlyReport: data.read_only_diagnostic,
       autonomous: data.autonomous === true,
       delegationId: data.background_delegation_id,
       queueId: data.queue_id,
@@ -806,6 +822,7 @@ export async function handleBridgeRun(
       fullInstructions,
       profile,
       {
+        ...(data.read_only_diagnostic ? { read_only_report: true } : {}),
         ...(bridgeStorageInput !== undefined ? { storage_message: bridgeStorageInput } : {}),
         ...(resolvedModel ? { model: resolvedModel } : {}),
         ...(resolvedProvider ? { provider: resolvedProvider } : {}),
@@ -834,7 +851,7 @@ export async function handleBridgeRun(
       }
     }
     try {
-      startWorkspaceRunCheckpoint({
+      if (!data.read_only_diagnostic) startWorkspaceRunCheckpoint({
         sessionId: session_id,
         runId: started.run_id,
         workspace,
@@ -1775,7 +1792,7 @@ async function applyBridgeChunkAsync(
   }
 
   flushPendingToolMarkupToAssistant(state, runMarker, chunk.run_id, emit)
-  flushBridgePendingToDb(state, sessionId, runMarker)
+  flushBridgePendingToDb(state, sessionId, runMarker, !terminalError && runMetadata?.readOnlyReport ? 'read_only_report' : undefined)
   finalResponse = bridgeFinalResponse(chunk, state, useMoaFinalResponse)
   state.bridgePendingToolCallMarkup = undefined
   if (runMetadata?.backgroundDelegationIds.size) {
@@ -1894,7 +1911,7 @@ async function applyBridgeChunkAsync(
   // source of the run being finalized: state.source may already describe the
   // next queued run by this point. The standing-goal judge uses the same profile
   // worker as chat runs and can otherwise delay the scheduler's next node.
-  if (!terminalError && runSource !== 'workflow') {
+  if (!terminalError && runSource !== 'workflow' && !runMetadata?.readOnlyReport) {
     await maybeEnqueueGoalContinuation({
       nsp,
       socket,

@@ -16,7 +16,7 @@ watch(() => [props.sessionId, props.profile, capabilities.value.enabled], () => 
   expanded.value = false
 })
 const target = computed(() => capabilities.value.enabled && props.sessionId ? { id: props.sessionId, profile: props.profile } : null)
-const { state, error, unavailable, busy, unsubscribe } = useKanbanNotifications(target)
+const { state, error, unavailable, busy, unsubscribe, changeVersion } = useKanbanNotifications(target)
 const subscriptions = computed(() => state.value.subscriptions.filter(s => s.active !== false))
 const groups = computed(() => groupKanbanNotifications(state.value.notifications))
 const dateFormat = computed(() => new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))
@@ -30,10 +30,12 @@ function createTask() {
     <NPopover v-model:show="expanded" trigger="click" placement="bottom-start" :show-arrow="false" :style="{ padding: '0', maxWidth: 'calc(100vw - 24px)' }">
       <template #trigger>
         <NButton size="tiny" quaternary class="notification-trigger" :aria-expanded="expanded" :aria-label="t('kanban.notifications.title')" @keydown.esc.stop="expanded = false">
+          <span :key="changeVersion" class="notification-content" :class="{ 'is-updated': changeVersion > 0 }" :data-change-version="changeVersion">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
           <span>{{ t('kanban.notifications.title') }}</span>
           <span v-if="state.notifications.length" class="notice-count">{{ state.notifications.length }}</span>
           <span v-if="error" class="error-dot" role="status" :aria-label="t('kanban.notifications.loadFailed')">!</span>
+          </span>
         </NButton>
       </template>
       <div :key="sessionId + ':' + profile" class="notification-panel" data-testid="kanban-notification-overlay" @keydown.esc.stop="expanded = false">
@@ -90,6 +92,15 @@ function createTask() {
   color: var(--text-secondary);
 }
 .notification-trigger :deep(.n-button__content) { gap: 7px; }
+.notification-content { display: inline-flex; align-items: center; gap: 7px; border-radius: 4px; }
+.notification-content.is-updated { animation: notification-update 1.4s ease-out; }
+@keyframes notification-update {
+  0%, 100% { background: transparent; box-shadow: 0 0 0 4px transparent; }
+  30% { background: rgba(var(--accent-info-rgb), .2); box-shadow: 0 0 0 4px rgba(var(--accent-info-rgb), .2); color: var(--text-primary); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notification-content.is-updated { animation: none; }
+}
 .notice-count { padding: 0 5px; border-radius: 4px; background: var(--bg-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
 .error-dot { color: var(--warning); }
 .notification-panel { width: min(420px, calc(100vw - 24px)); font-size: 12px; color: var(--text-primary); }

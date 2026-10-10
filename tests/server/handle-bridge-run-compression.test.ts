@@ -14,6 +14,7 @@ import type { SessionState } from '../../packages/server/src/modules/studio/serv
 
 const mocks = vi.hoisted(() => ({
   rows: [] as Partial<HermesMessageRow>[],
+  reportCompleted: false,
   compress: vi.fn(async (history: unknown[]) => ({
     messages: history,
     meta: { compressed: false, llmCompressed: false, verbatimCount: history.length, compressedStartIndex: -1 },
@@ -25,6 +26,7 @@ vi.mock('../../packages/server/src/modules/studio/public/runs/prompt', () => ({
 }))
 
 vi.mock('../../packages/server/src/modules/studio/repositories/session-store', () => ({
+  hasCompletedReadOnlyReport: vi.fn(() => mocks.reportCompleted),
   getSession: vi.fn(() => ({ id: 'session-1', profile: 'default', model: '', provider: '', history_revision: 0 })),
   getSessionContextMessages: vi.fn(() => mocks.rows),
   getSessionContextMessage: vi.fn(),
@@ -148,11 +150,48 @@ function makeSockets() {
 
 describe('handle-bridge-run compression', () => {
   beforeEach(() => {
+    mocks.reportCompleted = false
     mocks.rows = [...PREVIOUS_TURN]
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+  })
+  it('does not run a provider again when the same report already completed durably', async () => {
+    mocks.reportCompleted = true
+    const { nsp, socket } = makeSockets()
+    const bridge = makeBridge()
+    const state = { messages: [], events: [], queue: [], isWorking: true } as unknown as SessionState
+    const sessionMap = new Map([['session-1', state]])
+    const onEvent = vi.fn(), dequeue = vi.fn()
+    await handleBridgeRun(nsp, socket, {
+      session_id: 'session-1', input: 'report', queue_id: 'kanban-diagnostic:once',
+      read_only_diagnostic: true, onEvent,
+    }, 'default', sessionMap, bridge as unknown as PrimaryAgentBridgeClient, true, vi.fn(), dequeue)
+    expect(bridge.chat).not.toHaveBeenCalled()
+    expect(onEvent).toHaveBeenCalledWith('run.completed', expect.objectContaining({ deduplicated: true }))
+    expect(state.isWorking).toBe(false)
+    expect(dequeue).toHaveBeenCalledOnce()
+  })
+  it('uses bounded text-only history and native report mode instead of compression', async () => {
+    const { nsp, socket } = makeSockets()
+    const bridge = makeBridge()
+    const state = {
+      messages: Array.from({ length: 10 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: 'x'.repeat(1000) })),
+      events: [], queue: [], isWorking: true,
+    } as unknown as SessionState
+    const sessionMap = new Map([['session-1', state]])
+    await handleBridgeRun(nsp, socket, {
+      session_id: 'session-1', input: 'report', queue_id: 'kanban-diagnostic:new',
+      read_only_diagnostic: true, instructions: 'Read-only report', display_input: null,
+      storage_message: '',
+    }, 'default', sessionMap, bridge as unknown as PrimaryAgentBridgeClient, true, vi.fn(), vi.fn())
+    expect(bridge.chat).toHaveBeenCalledOnce()
+    const args = vi.mocked(bridge.chat).mock.calls[0] as unknown[]
+    expect(args[2]).toHaveLength(6)
+    expect((args[2] as ChatMessage[]).every(message => String(message.content).length <= 500)).toBe(true)
+    expect(args[5]).toMatchObject({ read_only_report: true, storage_message: '' })
+    expect(mocks.compress).not.toHaveBeenCalled()
   })
 
   it('settles the run and continues the queue when the context window is too small before the run starts', async () => {
