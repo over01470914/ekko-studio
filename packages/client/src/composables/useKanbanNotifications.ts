@@ -5,6 +5,7 @@ import { fetchKanbanSessionNotifications, unsubscribeKanbanSessionNotification, 
 export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profile: string } | null>>, intervalMs = 10_000) {
   const state = ref<KanbanSessionNotifications>({ subscriptions: [], notifications: [] })
   const error = ref(false)
+  const unavailable = ref(false)
   const busy = ref(false)
   let generation = 0
   let refresh: (() => Promise<void>) | undefined
@@ -12,6 +13,7 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
     const current = ++generation
     state.value = { subscriptions: [], notifications: [] }
     error.value = false
+    unavailable.value = false
     busy.value = false
     refresh = undefined
     if (!scope) return
@@ -28,10 +30,15 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
         if (current !== generation || requestId !== sequence) return
         state.value = result
         error.value = false
-      } catch {
-        if (current === generation && requestId === sequence) error.value = true
+      } catch (cause) {
+        if (current === generation && requestId === sequence) {
+          const status = (cause as { status?: number } | null)?.status
+          unavailable.value = status === 403 || status === 404
+          error.value = !unavailable.value
+          if (unavailable.value) state.value = { subscriptions: [], notifications: [] }
+        }
       } finally {
-        if (current === generation && requestId === sequence) timer = setTimeout(() => void poll(), intervalMs)
+        if (current === generation && requestId === sequence && !unavailable.value) timer = setTimeout(() => void poll(), intervalMs)
       }
     }
     refresh = poll
@@ -57,5 +64,5 @@ export function useKanbanNotifications(target: Readonly<Ref<{ id: string; profil
       if (current === generation) busy.value = false
     }
   }
-  return { state, error, busy, unsubscribe }
+  return { state, error, unavailable, busy, unsubscribe }
 }

@@ -77,7 +77,7 @@ import type {
   SessionState,
 } from '../services/chat-run/types'
 import { authenticateUserToken, inspectAppUserToken, isAuthEnabled, type AuthenticatedUser } from '../public/auth'
-import { findUserById, userCanAccessProfile } from '../repositories/users-store'
+import { findUserById, userCanAccessProfile, activeUserCanAccessProfile } from '../repositories/users-store'
 import { observeRunChatPetEvent } from '../public/pet-events'
 import { observeChatRunWebhookEvent, type ChatRunWebhookAgent } from '../services/webhooks'
 import { getAgentStatusSnapshot } from '../public/agent-status-registry'
@@ -1895,7 +1895,7 @@ export class ChatRunSocket {
         && String(session.user_id) === String(input.userId)
         && (session.profile || 'default') === input.profile
         && !session.is_archived && isBuiltinEkkoAgent(session.agent)
-        && userCanAccessProfile(input.userId, input.profile)
+        && activeUserCanAccessProfile(input.userId, input.profile)
     }
     if (!allowed() || !/^[a-z][a-z0-9-]*:.{1,200}$/.test(input.queueId)
       || !input.input || input.input.length > 6000 || input.instructions.length > 2000) return false

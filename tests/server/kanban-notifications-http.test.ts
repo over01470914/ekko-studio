@@ -71,6 +71,14 @@ describe('Kanban session HTTP contract with isolated native SQLite', () => {
     expect((await fetch(origin + '/api/studio/kanban-reporting', { headers: { 'x-run-auth': '1' } })).status).toBe(401)
     expect((await request('POST', '', { board: 'board', task_id: 'task' })).status).toBe(503)
   })
+  it('allows an active super-admin owner without explicit profile membership', async () => {
+    db.prepare("UPDATE users SET role = 'super_admin' WHERE id = ?").run(user.id)
+    db.prepare('DELETE FROM user_profiles WHERE user_id = ?').run(user.id)
+    expect((await request('GET')).status).toBe(200)
+    expect((await request('POST', '', { board: 'board', task_id: 'task' })).status).toBe(200)
+    db.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(user.id)
+    expect((await request('GET')).status).toBe(403)
+  })
   it('rejects diagnostic opt-in when only notifications are enabled', async () => {
     const { createKanbanMilestoneService } = await import('../../packages/server/src/modules/studio/services/notifications/kanban-milestones')
     setActive(createKanbanMilestoneService({

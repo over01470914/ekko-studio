@@ -127,6 +127,7 @@ vi.mock('../../packages/server/src/modules/studio/public/auth', () => ({
 vi.mock('../../packages/server/src/modules/studio/repositories/users-store', () => ({
   findUserById: vi.fn((id: number) => ({ id, status: 'active', role: 'super_admin' })),
   userCanAccessProfile: vi.fn(() => true),
+  activeUserCanAccessProfile: vi.fn(() => true),
 }))
 
 function makeServerHarness() {

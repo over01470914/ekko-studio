@@ -29,7 +29,7 @@ vi.mock('../../packages/server/src/modules/studio/repositories/kanban-session-no
 }))
 vi.mock('../../packages/server/src/modules/studio/repositories/session-store', () => ({ getSession: vi.fn() }))
 vi.mock('../../packages/server/src/modules/studio/repositories/users-store', () => ({
-  findUserById: vi.fn(), userCanAccessProfile: vi.fn(),
+  findUserById: vi.fn(), activeUserCanAccessProfile: vi.fn(),
 }))
 vi.mock('../../packages/server/src/modules/studio/public/kanban-notifications', () => ({
   setKanbanOriginPort: mocks.setOrigin,

@@ -1071,8 +1071,10 @@ defineExpose({
 .message-list-shell {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   position: relative;
   display: flex;
+  flex-direction: column;
 }
 
 .message-list--search-loading {

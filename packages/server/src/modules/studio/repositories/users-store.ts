@@ -115,6 +115,12 @@ export function listUserProfiles(userId: UserId): UserProfileRecord[] {
   ).all(id) as unknown as UserProfileRecord[]
 }
 
+export function activeUserCanAccessProfile(userId: UserId, profileName: string): boolean {
+  const user = findUserById(userId)
+  return user?.status === 'active'
+    && (user.role === 'super_admin' || userCanAccessProfile(userId, profileName))
+}
+
 export function userCanAccessProfile(userId: UserId, profileName: string): boolean {
   const db = getDb()
   if (!db) return false

@@ -11,10 +11,11 @@ const capabilities = useKanbanReportingCapabilities()
 const createOrigin = ref<string | null>(null)
 watch(() => [props.sessionId, props.profile, capabilities.value.enabled], () => { createOrigin.value = null })
 const target = computed(() => capabilities.value.enabled && props.sessionId ? { id: props.sessionId, profile: props.profile } : null)
-const { state, error, busy, unsubscribe } = useKanbanNotifications(target)
+const { state, error, unavailable, busy, unsubscribe } = useKanbanNotifications(target)
 const subscriptions = computed(() => state.value.subscriptions.filter(s => s.active !== false))
 </script>
 <template>
+  <section v-if="capabilities.enabled && sessionId && !unavailable" class="kanban-session-reporting">
   <NButton v-if="capabilities.enabled && sessionId" size="tiny" class="kanban-create-from-session" @click="createOrigin = sessionId">{{ t('kanban.notifications.createFromSession') }}</NButton>
   <KanbanCreateForm v-if="createOrigin" :origin-session-id="createOrigin" @close="createOrigin = null" />
   <details v-if="subscriptions.length || state.notifications.length || error" class="kanban-notification-overlay" open data-testid="kanban-notification-overlay">
@@ -31,9 +32,12 @@ const subscriptions = computed(() => state.value.subscriptions.filter(s => s.act
       <NButton size="tiny" :disabled="busy" @click="unsubscribe(subscription.id)">{{ t('kanban.notifications.unsubscribe') }}</NButton>
     </div>
   </details>
+  </section>
 </template>
 <style scoped lang="scss">
-.kanban-notification-overlay { flex: 0 0 auto; max-height: 30%; overflow: auto; padding: 8px 16px; border-bottom: 1px solid var(--border-color); font-size: 12px; }
+.kanban-session-reporting { flex: 0 0 auto; min-width: 0; max-height: 30%; overflow: auto; padding: 8px 16px; border-bottom: 1px solid var(--border-color); font-size: 12px; }
+.kanban-create-from-session { margin-bottom: 4px; }
+.kanban-notification-overlay { overflow-wrap: anywhere; }
 summary { cursor: pointer; }
 article { padding: 8px 0; }
 p { white-space: pre-wrap; margin: 4px 0; }

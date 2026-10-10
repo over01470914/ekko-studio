@@ -46,6 +46,20 @@ describe('Studio Kanban notification persistence and diagnostic wakes', () => {
     db?.close(); rmSync(dir, { recursive: true, force: true })
     vi.doUnmock(base + 'infrastructure/database/index'); vi.resetModules(); vi.useRealTimers()
   })
+  it('uses current super-admin profile access without bypassing session ownership or disabled status', async () => {
+    db.prepare("UPDATE users SET role = 'super_admin' WHERE id = ?").run(user.id)
+    db.prepare('DELETE FROM user_profiles WHERE user_id = ?').run(user.id)
+    const reporting = service.createKanbanMilestoneService(source, wake)
+    await expect(reporting.subscribe(user, { ...input, wakeEnabled: true })).resolves.toBeTruthy()
+    await expect(reporting.list(user, input.sessionId, input.profile)).resolves.toBeTruthy()
+    db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(user.id)
+    await expect(reporting.list(user, input.sessionId, input.profile)).rejects.toMatchObject({ status: 403 })
+    db.prepare("UPDATE users SET role = 'super_admin', status = 'disabled' WHERE id = ?").run(user.id)
+    await expect(reporting.list(user, input.sessionId, input.profile)).rejects.toMatchObject({ status: 403 })
+    db.prepare("UPDATE users SET status = 'active' WHERE id = ?").run(user.id)
+    db.prepare("UPDATE sessions SET user_id = 'different-owner' WHERE id = ?").run(input.sessionId)
+    await expect(reporting.list(user, input.sessionId, input.profile)).rejects.toMatchObject({ status: 403 })
+  })
   it('preserves legacy notification rows without claiming downstream delivery or enabling diagnostics', async () => {
     db.exec(`
       DROP TABLE kanban_session_notifications;

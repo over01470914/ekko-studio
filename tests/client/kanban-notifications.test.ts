@@ -9,6 +9,22 @@ function deferred() { let resolve!: (v: any) => void; const promise = new Promis
 const result = (id: string) => ({ subscriptions: [{ id, board: 'arbitrary-board', task_id: 'arbitrary-task' }], notifications: [{ id, label: id }] })
 afterEach(() => { vi.clearAllMocks(); vi.useRealTimers() })
 describe('display-only Kanban polling', () => {
+  it.each([403, 404])('stops polling and clears stale notices after terminal HTTP %s', async status => {
+    vi.useFakeTimers()
+    api.fetch.mockResolvedValueOnce(result('private')).mockRejectedValue(Object.assign(new Error('denied'), { status }))
+    const target = ref({ id: 'a', profile: 'p' })
+    const scope = effectScope()
+    const notices = scope.run(() => useKanbanNotifications(target))!
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(api.fetch).toHaveBeenCalledTimes(2)
+    expect(notices.state.value.notifications).toEqual([])
+    expect(notices.unavailable.value).toBe(true)
+    target.value = { id: 'b', profile: 'p' }
+    expect(notices.unavailable.value).toBe(false)
+    scope.stop()
+  })
   it('polls arbitrary session/profile, rejects A → B → A and profile races, stops on disposal', async () => {
     vi.useFakeTimers()
     const a = deferred(), b = deferred(), secondA = deferred()

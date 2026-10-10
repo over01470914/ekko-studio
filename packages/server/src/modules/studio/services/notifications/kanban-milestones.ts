@@ -1,6 +1,6 @@
 import { isBuiltinEkkoAgent } from '../../contracts/history-source'
 import { getSession } from '../../repositories/session-store'
-import { findUserById, userCanAccessProfile, type UserRecord } from '../../repositories/users-store'
+import { findUserById, activeUserCanAccessProfile, type UserRecord } from '../../repositories/users-store'
 import {
   advanceKanbanSubscription, claimKanbanWake, deactivateKanbanSessionSubscription, finishKanbanWake,
   getKanbanSessionSubscription, listKanbanSessionNotifications, listKanbanSessionSubscriptions,
@@ -33,13 +33,13 @@ export class KanbanMilestoneError extends Error {
 type UserActor = Pick<UserRecord, 'id'>
 function sessionAccess(user: UserActor, sessionId: string, profile: string): boolean {
   const session = getSession(sessionId)
-  return findUserById(user.id)?.status === 'active' && session?.user_id != null
+  return session?.user_id != null
     && String(session.user_id) === String(user.id) && (session.profile || 'default') === profile
-    && userCanAccessProfile(user.id, profile)
+    && activeUserCanAccessProfile(user.id, profile)
 }
 function taskAccess(user: UserActor, task: KanbanTaskRef | null, taskId: string): task is KanbanTaskRef {
-  return findUserById(user.id)?.status === 'active' && task?.id === taskId
-    && !!task.assignee && userCanAccessProfile(user.id, task.assignee)
+  return task?.id === taskId
+    && !!task.assignee && activeUserCanAccessProfile(user.id, task.assignee)
 }
 function unwrap(detail: KanbanTaskRef | { task: KanbanTaskRef } | null): KanbanTaskRef | null {
   return detail && 'task' in detail ? detail.task : detail
