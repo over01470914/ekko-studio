@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { modelReasoningEfforts } from '@/utils/model-reasoning-effort'
+import { libraryAvatarImage, pickLibraryAvatar } from '@/utils/avatar-library'
+import { getBaseUrlValue } from '@/api/client'
 import { isNativeCodingAgent, isGlobalOnlyCodingAgent } from '@/utils/agent-catalog'
 import PageSidebar from "@/components/layout/PageSidebar.vue"
 import { usePageSidebarState } from "@/composables/usePageSidebar"
@@ -1532,12 +1534,12 @@ function handleAddAgent() {
     void loadAgentFormOptions()
 }
 
-function randomAgentAvatarSeed() {
-    return `group-agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function handleRandomAgentAvatar() {
-    agentAvatar.value = { type: 'generated', seed: randomAgentAvatarSeed() }
+async function handleRandomAgentAvatar() {
+    try {
+        agentAvatar.value = await libraryAvatarImage(pickLibraryAvatar(agentAvatar.value?.assetId), getBaseUrlValue())
+    } catch {
+        message.error(t('profiles.avatar.saveFailed'))
+    }
 }
 
 function handleResetAgentAvatar() {

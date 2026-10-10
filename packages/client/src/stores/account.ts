@@ -7,9 +7,7 @@ import { onAuthInvalidated } from '@/api/auth-invalidation'
 export const useAccountStore = defineStore('account', () => {
   const username = ref(getStoredUsername() || '')
   const avatar = ref<UserAvatar | null>(null)
-  const profileAvatar = computed(() => avatar.value?.type === 'image'
-    ? { type: 'image' as const, dataUrl: avatar.value.dataUrl }
-    : null)
+  const profileAvatar = computed(() => avatar.value?.type === 'image' || avatar.value?.type === 'library' ? avatar.value : null)
   let loaded = false
   let pending: Promise<void> | null = null
   let generation = 0

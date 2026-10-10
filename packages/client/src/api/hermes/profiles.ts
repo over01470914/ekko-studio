@@ -1,4 +1,5 @@
 import { request, getBaseUrlValue, getApiKey } from '../client'
+import { libraryAvatarImage, type LibraryAvatar } from '@/utils/avatar-library'
 
 export interface HermesProfile {
   name: string
@@ -21,9 +22,12 @@ export interface HermesProfileDetail {
 }
 
 export interface ProfileAvatar {
-  type: 'generated' | 'image'
+  type: 'generated' | 'image' | 'library'
   seed?: string
   dataUrl?: string
+  assetId?: string
+  revision?: number
+  url?: string
   updatedAt?: number
 }
 
@@ -84,9 +88,11 @@ export async function fetchProfileRuntimeStatuses(): Promise<ProfileRuntimeStatu
 }
 
 export async function updateProfileAvatar(name: string, avatar: ProfileAvatar): Promise<ProfileAvatar> {
+  const payload = avatar.type === 'library'
+    ? await libraryAvatarImage(avatar as LibraryAvatar, getBaseUrlValue()) : avatar
   const res = await request<{ avatar: ProfileAvatar }>(`/api/hermes/profiles/${encodeURIComponent(name)}/avatar`, {
     method: 'PUT',
-    body: JSON.stringify(avatar),
+    body: JSON.stringify(payload),
   })
   return res.avatar
 }
