@@ -85,6 +85,52 @@ describe('chat-run socket reconnect handling', () => {
     socketState.sockets = []
   })
 
+  it('does not deliver an older same-session response to a Retry request', async () => {
+    const { resumeSession } = await import('../../packages/client/src/api/studio/chat')
+    const oldResult = vi.fn(), retryResult = vi.fn()
+    const first = resumeSession('retry-session', oldResult, 'default') as any
+    const retry = resumeSession('retry-session', retryResult, 'default') as any
+    first.__trigger('resumed', { session_id: 'retry-session', messages: ['old'] })
+    expect(retryResult).not.toHaveBeenCalled()
+    retry.__trigger('resumed', { session_id: 'retry-session', messages: ['new'] })
+    expect(retryResult).toHaveBeenCalledWith(expect.objectContaining({ messages: ['new'] }))
+    expect(first.disconnect).not.toHaveBeenCalled()
+    expect(retry.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('bounds resume listeners and rejects a late timed-out response on Retry', async () => {
+    vi.useFakeTimers()
+    try {
+      const { resumeSession } = await import('../../packages/client/src/api/studio/chat')
+      const oldResult = vi.fn(), retryResult = vi.fn()
+      const first = resumeSession('late-session', oldResult, 'default') as any
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(first.__listenerCount('resumed')).toBe(0)
+      const retry = resumeSession('late-session', retryResult, 'default') as any
+      first.__trigger('resumed', { session_id: 'late-session', messages: ['expired'] })
+      expect(oldResult).not.toHaveBeenCalled()
+      expect(retryResult).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(retry.__listenerCount('resumed')).toBe(0)
+      expect(retry.disconnect).toHaveBeenCalledOnce()
+      expect(first.disconnect).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('cleans pending isolated resumes when authentication is invalidated', async () => {
+    const { resumeSession } = await import('../../packages/client/src/api/studio/chat')
+    const { invalidateAuth } = await import('../../packages/client/src/api/auth-invalidation')
+    const oldResult = vi.fn(), retryResult = vi.fn()
+    const first = resumeSession('auth-session', oldResult, 'default') as any
+    const retry = resumeSession('auth-session', retryResult, 'default') as any
+    invalidateAuth()
+    first.__trigger('resumed', { session_id: 'auth-session', messages: ['old login'] })
+    retry.__trigger('resumed', { session_id: 'auth-session', messages: ['old login'] })
+    expect(oldResult).not.toHaveBeenCalled()
+    expect(retryResult).not.toHaveBeenCalled()
+    expect(retry.disconnect).toHaveBeenCalledOnce()
+  })
+
   it('keeps transient mobile disconnects alive and resumes after reconnect', async () => {
     const { startRunViaSocket } = await import('../../packages/client/src/api/studio/chat')
     const onEvent = vi.fn()
