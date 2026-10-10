@@ -1,5 +1,6 @@
 import { request } from '../client'
 import type { UserThemeSettings } from './theme'
+import { resolveLibraryAvatar, type LibraryAvatar } from '@/utils/avatar-library'
 
 export interface AuthStatus {
   hasPasswordLogin: boolean
@@ -46,11 +47,12 @@ export interface CurrentUser {
   requiresCredentialChange?: boolean
 }
 
-export interface UserAvatar {
-  type: 'image' | 'default'
+export interface UserAvatarImage {
+  type: 'image'
   dataUrl?: string
   seed?: string
 }
+export type UserAvatar = UserAvatarImage | { type: 'default'; seed?: string } | LibraryAvatar
 
 export async function fetchCurrentUser(): Promise<CurrentUser> {
   const res = await request<{ user: CurrentUser }>('/api/auth/me')
@@ -62,6 +64,7 @@ export async function fetchMyAvatar(): Promise<UserAvatar | null> {
   if (!res.avatar) return null
   try {
     const parsed = JSON.parse(res.avatar) as UserAvatar
+    if (parsed?.type === 'library') return resolveLibraryAvatar(parsed)
     if (parsed && (parsed.type === 'image' || parsed.type === 'default')) return parsed
     return null
   } catch {

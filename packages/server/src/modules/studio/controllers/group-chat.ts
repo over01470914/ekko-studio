@@ -1,4 +1,5 @@
 import { isGlobalOnlyCodingAgent } from '../contracts/agents/native-coding-agents'
+import { libraryAvatar } from '../services/avatars/library'
 import { randomBytes } from 'node:crypto'
 import {
     GROUP_CHAT_MESSAGE_WINDOW,
@@ -152,6 +153,11 @@ function normalizeRoomAgentAvatar(value: unknown): string {
     try {
         parsed = JSON.parse(value)
     } catch {
+        throw new Error('Invalid agent avatar')
+    }
+    if (parsed?.type === 'library') {
+        const reference = libraryAvatar(parsed.assetId, parsed.revision)
+        if (reference) return JSON.stringify({ type: 'library', assetId: reference.assetId, revision: 3 })
         throw new Error('Invalid agent avatar')
     }
     if (parsed?.type === 'generated' && typeof parsed.seed === 'string' && parsed.seed.trim() && parsed.seed.length <= 200) {
@@ -862,6 +868,59 @@ export async function addRoomAgent(ctx: any) {
         ctx.status = 502
         ctx.body = agentConnectFailureBody(normalizedProfile, err)
     }
+}
+
+/** Safe avatar-only write: unlike full agent PUT this never replaces the live runtime. */
+export async function updateRoomAgentAvatar(ctx: any) {
+    if (!chatServer) { ctx.status = 503; ctx.body = { error: 'Group chat not initialized' }; return }
+    const roomId = ctx.params.roomId
+    const agentId = ctx.params.agentId
+    const storage = chatServer.getStorage()
+    if (!storage.getRoom(roomId) || !storage.getRoomAgent(roomId, agentId)) {
+        ctx.status = 404; ctx.body = { error: 'Room Agent not found' }; return
+    }
+    if (!canManageRoom(storage, roomId, ctx.state?.user)) {
+        ctx.status = 403; ctx.body = { error: 'Access denied' }; return
+    }
+    if (roomDeletions.has(roomId) || roomAgentUpdates.has(`${roomId}:${storage.getRoomAgent(roomId, agentId)!.agentId}`)) {
+        ctx.status = 409; ctx.body = { error: 'Agent update in progress' }; return
+    }
+    const body = ctx.request.body
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1 || typeof body.avatar !== 'string') {
+        ctx.status = 400; ctx.body = { error: 'avatar string is required' }; return
+    }
+    let avatar: string
+    try { avatar = normalizeRoomAgentAvatar(body.avatar) }
+    catch (err: any) { ctx.status = 400; ctx.body = { error: err.message }; return }
+    const updated = storage.setRoomAgentAvatar(roomId, agentId, avatar)
+    if (!updated) { ctx.status = 409; ctx.body = { error: 'Agent changed' }; return }
+    chatServer.broadcastRoomAgents(roomId)
+    ctx.body = { agent: updated }
+}
+
+/** Authenticated owner's own persisted room-member avatar snapshot (not an agent). */
+export async function roomMemberAvatar(ctx: any) {
+    if (!chatServer) { ctx.status = 503; ctx.body = { error: 'Group chat not initialized' }; return }
+    const roomId = ctx.params.roomId
+    const storage = chatServer.getStorage()
+    const userId = Number(ctx.state?.user?.id)
+    if (!Number.isSafeInteger(userId) || userId <= 0 || !canManageRoom(storage, roomId, ctx.state?.user)) {
+        ctx.status = 403; ctx.body = { error: 'Access denied' }; return
+    }
+    const member = storage.getMemberByAuthUserId(roomId, userId)
+    if (!member) { ctx.status = 404; ctx.body = { error: 'Member not found' }; return }
+    if (ctx.method === 'GET') { ctx.body = { id: member.id, avatar: member.avatar }; return }
+    const body = ctx.request.body
+    if (!body || Object.keys(body).length !== 2 || typeof body.avatar !== 'string' || body.previousAvatar !== member.avatar) {
+        ctx.status = 409; ctx.body = { error: 'Member avatar changed or invalid payload' }; return
+    }
+    let avatar: string
+    try { avatar = normalizeRoomAgentAvatar(body.avatar) }
+    catch (err: any) { ctx.status = 400; ctx.body = { error: err.message }; return }
+    if (!storage.setMemberAvatarByAuthUserId(roomId, userId, member.id, member.avatar, avatar)) {
+        ctx.status = 409; ctx.body = { error: 'Member avatar changed' }; return
+    }
+    ctx.body = { id: member.id, avatar }
 }
 
 // Update an agent and replace only its group-chat runtime client.

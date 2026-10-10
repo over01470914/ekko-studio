@@ -10604,8 +10604,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "assetId": {
+                    "type": "string"
+                  },
                   "dataUrl": {
                     "type": "string"
+                  },
+                  "previousImageHash": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "number"
                   },
                   "seed": {
                     "type": "string"
@@ -10642,6 +10651,50 @@
         "parameters": [
           {
             "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/hermes/profiles/{name}/avatar/image/{hash}": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Get :hash",
+        "description": "GET /api/hermes/profiles/:name/avatar/image/:hash",
+        "operationId": "getAvatarImage",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hash",
             "in": "path",
             "required": true,
             "schema": {
@@ -15406,6 +15459,68 @@
         ]
       }
     },
+    "/api/studio/group-chat/rooms/{roomId}/agents/{agentId}/avatar": {
+      "put": {
+        "tags": [
+          "Group Chat"
+        ],
+        "summary": "Update avatar",
+        "description": "PUT /api/studio/group-chat/rooms/:roomId/agents/:agentId/avatar",
+        "operationId": "updateRoomAgentAvatar",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "avatar"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/studio/group-chat/rooms/{roomId}/agents/{agentId}/host-access": {
       "put": {
         "tags": [
@@ -16099,6 +16214,94 @@
                 "required": [
                   "inviteCode"
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/group-chat/rooms/{roomId}/members/me/avatar": {
+      "get": {
+        "tags": [
+          "Group Chat"
+        ],
+        "summary": "Get avatar",
+        "description": "GET /api/studio/group-chat/rooms/:roomId/members/me/avatar",
+        "operationId": "roomMemberAvatar",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Group Chat"
+        ],
+        "summary": "Update avatar",
+        "description": "PUT /api/studio/group-chat/rooms/:roomId/members/me/avatar",
+        "operationId": "roomMemberAvatar",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string"
+                  },
+                  "previousAvatar": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }

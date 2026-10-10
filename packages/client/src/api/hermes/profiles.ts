@@ -21,9 +21,12 @@ export interface HermesProfileDetail {
 }
 
 export interface ProfileAvatar {
-  type: 'generated' | 'image'
+  type: 'generated' | 'image' | 'library'
   seed?: string
   dataUrl?: string
+  assetId?: string
+  revision?: number
+  url?: string
   updatedAt?: number
 }
 

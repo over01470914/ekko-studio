@@ -1,5 +1,6 @@
 import type { ChatMessage, RoomAgent } from '@/api/studio/group-chat'
 import type { ProfileAvatar } from '@/api/hermes/profiles'
+import { resolveLibraryAvatar } from '@/utils/avatar-library'
 
 const DEFAULT_AGENT_ICONS: Record<RoomAgent['agent'], string> = {
     hermes: '/coding-agents/hermes.png',
@@ -24,6 +25,7 @@ export function parseStoredAvatar(raw: unknown): ProfileAvatar | null {
     if (!raw) return null
     try {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+        if (parsed?.type === 'library') return resolveLibraryAvatar(parsed)
         if (parsed?.type === 'generated' && typeof parsed.seed === 'string' && parsed.seed) {
             return { type: 'generated', seed: parsed.seed }
         }

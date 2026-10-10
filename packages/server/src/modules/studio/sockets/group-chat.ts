@@ -32,6 +32,7 @@ import {
 import { insertWorkspaceRunChange, deleteWorkspaceRunChangesForRoom, type SaveWorkspaceRunChangeInput, type WorkspaceRunChangeSummary } from '../repositories/workspace-run-changes-store'
 import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '../public/auth'
 import { getUserAvatar } from '../public/users'
+import { libraryAvatar } from '../services/avatars/library'
 import { config } from '../public/config'
 import { createSocketIoCorsOrigin, shouldRejectUpgradeOrigin } from '../public/security'
 import { paginateRecentGroupMessagesCanonical, sliceGroupMessagesCanonical, type GroupMessageCursorCutoff } from '../services/group-chat/group-message-ordering'
@@ -324,6 +325,11 @@ function normalizeRoomMemberAvatar(value: unknown): string {
         parsed = JSON.parse(value)
     } catch {
         throw new Error('Invalid member avatar')
+    }
+    if (parsed?.type === 'library') {
+        const reference = libraryAvatar(parsed.assetId, parsed.revision)
+        if (!reference) throw new Error('Invalid member avatar')
+        return JSON.stringify({ type: 'library', assetId: reference.assetId, revision: 3 })
     }
     if (parsed?.type === 'generated' && typeof parsed.seed === 'string' && parsed.seed.trim() && parsed.seed.length <= 200) {
         return JSON.stringify({ type: 'generated', seed: parsed.seed.trim() })
@@ -2753,6 +2759,14 @@ class ChatStorage {
         return this.getRoomAgent(roomId, agentRef)
     }
 
+    /** Avatar-only persistence: intentionally never touches executor/runtime configuration. */
+    setRoomAgentAvatar(roomId: string, agentRef: string, avatar: string): RoomAgent | null {
+        const result = this.db()?.prepare(
+            `UPDATE gc_room_agents SET avatar = ? WHERE roomId = ? AND removedAt = 0 AND (id = ? OR agentId = ?)`
+        ).run(avatar, roomId, agentRef, agentRef)
+        return result?.changes ? this.getRoomAgent(roomId, agentRef) : null
+    }
+
     setRoomAgentHostAccess(roomId: string, agentRef: string, enabled: boolean, ownerMemberId: string): RoomAgent | null {
         const result = this.db()?.prepare(
             `UPDATE gc_room_agents SET hostAccessEnabled = ?,
@@ -3176,6 +3190,14 @@ class ChatStorage {
         return (this.db()?.prepare(
             'SELECT id, userId, userName as name, description, joinedAt, avatar, authUserId FROM gc_room_members WHERE roomId = ? AND authUserId = ? ORDER BY updatedAt DESC LIMIT 1'
         ).get(roomId, authUserId) as any) ?? null
+    }
+
+    /** Scoped snapshot write; never touches room membership or running executors. */
+    setMemberAvatarByAuthUserId(roomId: string, authUserId: number, memberId: string, oldAvatar: string, avatar: string): boolean {
+        const result = this.db()?.prepare(
+            'UPDATE gc_room_members SET avatar = ?, updatedAt = ? WHERE roomId = ? AND authUserId = ? AND id = ? AND avatar = ?'
+        ).run(avatar, Date.now(), roomId, authUserId, memberId, oldAvatar)
+        return result?.changes === 1
     }
 
     updateMemberActivity(roomId: string, userId: string): void {

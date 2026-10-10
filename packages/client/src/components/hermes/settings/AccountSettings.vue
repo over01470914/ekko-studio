@@ -7,7 +7,7 @@ import { useI18n } from "vue-i18n";
 import { changePassword, changeUsername, fetchLockedIps, unlockSpecificIp, unlockAllIps, updateMyAvatar, resetMyAvatar } from "@/api/studio/auth";
 import type { LockedIp } from "@/api/studio/auth";
 import ProfileAvatar from "@/components/hermes/profiles/ProfileAvatar.vue";
-import boring from "boring-avatars-vanilla";
+import { pickLibraryAvatar } from '@/utils/avatar-library';
 
 const { t } = useI18n();
 const message = useMessage();
@@ -87,14 +87,9 @@ async function handleAvatarUpload(event: Event) {
 async function handleRandomAvatar() {
   avatarSaving.value = true
   try {
-    const randomPart = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2)
-    const seed = `${username.value || 'default'}-${Date.now()}-${randomPart}`
-    const svg = boring({ name: seed, variant: 'beam' })
-    const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)))
-    await updateMyAvatar({ type: 'image', dataUrl, seed })
-    avatar.value = { type: 'image', dataUrl, seed }
+    const chosen = pickLibraryAvatar(avatar.value?.type === 'library' ? avatar.value.assetId : undefined)
+    await updateMyAvatar(chosen)
+    avatar.value = chosen
     message.success(t('settings.userAvatar.saveSuccess'))
   } catch (err: any) {
     message.error(err.message || t('settings.userAvatar.saveFailed'))
@@ -243,7 +238,7 @@ onMounted(() => { loadLockedIps(); });
         <div class="avatar-display">
           <ProfileAvatar
             :name="username || 'default'"
-            :avatar="avatar?.type === 'image' && avatar.dataUrl ? { type: 'image', dataUrl: avatar.dataUrl } : null"
+            :avatar="accountStore.profileAvatar"
             :size="80"
           />
         </div>

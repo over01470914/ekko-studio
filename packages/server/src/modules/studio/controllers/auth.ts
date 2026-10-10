@@ -30,6 +30,7 @@ import { startOutboundRelayClient, stopOutboundRelayClient } from '../public/glo
 import { getLanEndpointKind } from '../services/network/lan-discovery'
 import { getPublicSystemInfo } from '../public/system-info'
 import { config } from '../public/config'
+import { libraryAvatar } from '../services/avatars/library'
 
 /**
  * GET /api/auth/status
@@ -63,7 +64,7 @@ export async function currentUser(ctx: Context) {
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login_at: user.last_login_at,
-      avatar: user.avatar || '',
+      avatar: userAvatarResponse(user.avatar || '', user.updated_at),
       requiresCredentialChange: process.env.HERMES_DESKTOP === 'true'
         ? false
         : user.username === DEFAULT_USERNAME && verifyPassword(DEFAULT_PASSWORD, user.password_hash),
@@ -73,11 +74,29 @@ export async function currentUser(ctx: Context) {
 
 const MAX_AVATAR_BYTES = 500 * 1024
 
+function userAvatarResponse(raw: string, updatedAt?: number): string {
+  if (!raw) return ''
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed?.type === 'library') {
+      const reference = libraryAvatar(parsed.assetId, parsed.revision, updatedAt)
+      return reference ? JSON.stringify(reference) : ''
+    }
+  } catch { /* Preserve legacy stored avatars. */ }
+  return raw
+}
+
 function isValidAvatarPayload(value: unknown): { ok: true; json: string } | { ok: false; error: string } {
   if (!value || typeof value !== 'object') return { ok: false, error: 'Invalid avatar payload' }
   const obj = value as Record<string, unknown>
   const type = obj.type
-  if (type !== 'image' && type !== 'default') return { ok: false, error: 'Avatar type must be "image" or "default"' }
+  if (type === 'library') {
+    const reference = libraryAvatar(obj.assetId, obj.revision)
+    return reference
+      ? { ok: true, json: JSON.stringify({ type: 'library', assetId: reference.assetId, revision: 3 }) }
+      : { ok: false, error: 'Invalid library avatar' }
+  }
+  if (type !== 'image' && type !== 'default') return { ok: false, error: 'Avatar type must be "image", "library" or "default"' }
   if (type === 'image') {
     if (typeof obj.dataUrl !== 'string' || !obj.dataUrl.startsWith('data:image/')) {
       return { ok: false, error: 'Image avatar must include a dataUrl' }
@@ -103,7 +122,8 @@ export async function getMyAvatar(ctx: Context) {
     ctx.body = { error: 'Unauthorized' }
     return
   }
-  ctx.body = { avatar: getUserAvatar(userId) }
+  const user = findUserById(userId)
+  ctx.body = { avatar: userAvatarResponse(getUserAvatar(userId), user?.updated_at) }
 }
 
 /**
@@ -135,13 +155,13 @@ export async function updateMyAvatar(ctx: Context) {
         ctx.body = { error: validation.error }
         return
       }
-      const ok = setUserAvatar(userId, candidate)
+      const ok = setUserAvatar(userId, validation.json)
       if (!ok) {
         ctx.status = 500
         ctx.body = { error: 'Failed to save avatar' }
         return
       }
-      ctx.body = { success: true, avatar: candidate }
+      ctx.body = { success: true, avatar: validation.json }
       return
     } catch {
       ctx.status = 400

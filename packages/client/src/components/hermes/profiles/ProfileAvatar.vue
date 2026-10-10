@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import boring from 'boring-avatars-vanilla'
 import type { ProfileAvatar } from '@/api/hermes/profiles'
+import { getApiKey, getBaseUrlValue } from '@/api/client'
+import { resolveLibraryAvatar } from '@/utils/avatar-library'
 
 const props = withDefaults(defineProps<{
   name: string
@@ -12,6 +14,27 @@ const props = withDefaults(defineProps<{
 })
 
 const fallbackSeed = computed(() => props.name || 'default')
+const imageUrl = ref('')
+let objectUrl = ''
+watch(() => props.avatar, async (avatar, _, onCleanup) => {
+  let cancelled = false
+  onCleanup(() => { cancelled = true })
+  imageUrl.value = ''
+  if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = '' }
+  const url = avatar?.type === 'library' ? resolveLibraryAvatar(avatar)?.url : avatar?.type === 'image' ? avatar.dataUrl || avatar.url : undefined
+  if (!url) return
+  if (!url.startsWith('/api/')) { imageUrl.value = url; return }
+  try {
+    const token = getApiKey()
+    const response = await fetch(`${getBaseUrlValue()}${url}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    if (!response.ok) return
+    const blob = await response.blob()
+    if (cancelled) return
+    objectUrl = URL.createObjectURL(blob)
+    imageUrl.value = objectUrl
+  } catch { /* safe fallback */ }
+}, { immediate: true })
+onBeforeUnmount(() => { if (objectUrl) URL.revokeObjectURL(objectUrl) })
 const generatedSvg = computed(() => boring({
   name: props.avatar?.seed || fallbackSeed.value,
   variant: 'beam',
@@ -27,9 +50,9 @@ const style = computed(() => ({
 <template>
   <span class="profile-avatar-view" :style="style">
     <img
-      v-if="avatar?.type === 'image' && avatar.dataUrl"
+      v-if="imageUrl"
       class="profile-avatar-image"
-      :src="avatar.dataUrl"
+      :src="imageUrl"
       alt=""
       draggable="false"
     >

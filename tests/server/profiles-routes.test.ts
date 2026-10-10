@@ -632,7 +632,7 @@ describe('Profile Routes', () => {
   })
 
   describe('profile avatars', () => {
-    it('returns a compressed image avatar from the App-only profile endpoint', async () => {
+    it('returns only an authorized image URL from the App-only profile endpoint', async () => {
       const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-app-avatar-'))
       tempHomes.push(webUiHome)
       process.env.HERMES_WEB_UI_HOME = webUiHome
@@ -668,13 +668,10 @@ describe('Profile Routes', () => {
       await listForApp(ctx)
 
       expect(ctx.status).toBe(200)
-      const dataUrl = String(ctx.body.profiles.find((profile: any) => profile.name === 'work').avatar.dataUrl)
-      expect(dataUrl).toMatch(/^data:image\/webp;base64,/)
-      const preview = Buffer.from(dataUrl.split(',', 2)[1], 'base64')
-      const metadata = await sharp(preview).metadata()
-      expect(metadata.width).toBe(128)
-      expect(metadata.height).toBe(96)
-      expect(preview.length).toBeLessThan(source.length)
+      const avatar = ctx.body.profiles.find((profile: any) => profile.name === 'work').avatar
+      expect(avatar.url).toMatch(/^\/api\/hermes\/profiles\/work\/avatar\/image\/[a-f0-9]{64}$/)
+      expect(avatar.dataUrl).toBeUndefined()
+      expect(JSON.stringify(ctx.body).length).toBeLessThan(10000)
     })
 
     it('keeps generated App avatars as seed metadata instead of embedding SVG', async () => {
@@ -733,7 +730,7 @@ describe('Profile Routes', () => {
       })
     })
 
-    it('stores uploaded image avatars and returns a data URL', async () => {
+    it('stores uploaded image avatars and returns an authorized URL', async () => {
       const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-'))
       tempHomes.push(webUiHome)
       process.env.HERMES_WEB_UI_HOME = webUiHome
@@ -751,9 +748,85 @@ describe('Profile Routes', () => {
       const dir = join(webUiHome, 'profile-metadata', Buffer.from('work', 'utf-8').toString('base64url'))
       const meta = JSON.parse(readFileSync(join(dir, 'avatar.json'), 'utf-8'))
       expect(ctx.status).toBe(200)
-      expect(ctx.body.avatar).toMatchObject({ type: 'image', dataUrl })
+      expect(ctx.body.avatar).toMatchObject({ type: 'image', url: expect.stringMatching(/^\/api\/hermes\/profiles\/work\/avatar\/image\/[a-f0-9]{64}$/) })
+      expect(ctx.body.avatar.dataUrl).toBeUndefined()
       expect(meta).toMatchObject({ type: 'image', file: 'avatar.bin', mime: 'image/png' })
       expect(readFileSync(join(dir, 'avatar.bin')).toString()).toBe('avatar-png')
+    })
+
+    it('serves uploaded bytes only to an authorized profile with the current hash', async () => {
+      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-auth-'))
+      tempHomes.push(webUiHome)
+      process.env.HERMES_WEB_UI_HOME = webUiHome
+      const { updateAvatar, getAvatarImage } = await import('../../packages/server/src/modules/hermes/controllers/profiles')
+      const upload: any = { params: { name: 'work' }, request: { body: { type: 'image', dataUrl: `data:image/png;base64,${Buffer.from('avatar-png').toString('base64')}` } }, status: 200 }
+      await updateAvatar(upload)
+      const url = upload.body.avatar.url
+      userProfilesMocks.listUserProfiles.mockReturnValue([])
+      const denied: any = { params: { name: 'work', hash: url.split('/').at(-1) }, path: url, state: { user: { id: 123, role: 'admin' } }, status: 200, set: () => {} }
+      await getAvatarImage(denied)
+      expect(denied.status).toBe(403)
+      expect(denied.body).not.toBeInstanceOf(Buffer)
+      const wrong: any = { ...denied, state: { user: { id: 123, role: 'super_admin' } }, params: { name: 'work', hash: '0'.repeat(64) }, path: url.replace(/\/[a-f0-9]{64}$/, '/' + '0'.repeat(64)), status: 200 }
+      await getAvatarImage(wrong)
+      expect(wrong.status).toBe(404)
+      const headers: Record<string, string> = {}
+      const ok: any = { ...denied, status: 200, state: { user: { id: 123, role: 'super_admin' } }, set: (key: string, value: string) => { headers[key] = value } }
+      await getAvatarImage(ok)
+      expect(ok.status).toBe(200)
+      expect(headers['Cache-Control']).toBe('private, max-age=86400')
+      expect(headers.ETag).toContain(ok.params.hash)
+      expect(ok.body).toHaveProperty('pipe')
+      ok.body.destroy()
+    })
+
+    it('stores only library IDs and revision, and denies unknown assets before writing', async () => {
+      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-library-'))
+      tempHomes.push(webUiHome)
+      process.env.HERMES_WEB_UI_HOME = webUiHome
+      const { updateAvatar, listForApp } = await import('../../packages/server/src/modules/hermes/controllers/profiles')
+      const dir = join(webUiHome, 'profile-metadata', Buffer.from('work').toString('base64url'))
+      const ctx: any = { params: { name: 'work' }, request: { body: { type: 'library', assetId: 'ip-999', revision: 3 } }, status: 200 }
+      await updateAvatar(ctx)
+      expect(ctx.status).toBe(400)
+      expect(existsSync(dir)).toBe(false)
+      ctx.status = 200
+      ctx.request.body = { type: 'library', assetId: 'ip-006', revision: 3, url: 'https://attacker.invalid' }
+      await updateAvatar(ctx)
+      expect(ctx.body.avatar.url).toMatch(/^\/avatar-library\/r3\/ip-006\.[a-f0-9]{64}\.webp$/)
+      const meta = JSON.parse(readFileSync(join(dir, 'avatar.json'), 'utf8'))
+      expect(meta).toMatchObject({ type: 'library', assetId: 'ip-006', revision: 3 })
+      expect(meta.url).toBeUndefined()
+      const hermesHome = await mkdtemp(join(tmpdir(), 'studio-app-avatar-profiles-'))
+      tempHomes.push(hermesHome)
+      process.env.HERMES_HOME = hermesHome
+      await mkdir(join(hermesHome, 'profiles', 'work'), { recursive: true })
+      const app: any = { state: { profile: { name: 'work' } }, status: 200 }
+      await listForApp(app)
+      expect(app.body.profiles.find((p: any) => p.name === 'work').avatar.url).toBe(ctx.body.avatar.url)
+      expect(JSON.stringify(app.body)).not.toContain('base64,')
+    })
+
+    it('removes an uploaded avatar bin only on a matching migration precondition', async () => {
+      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-migration-'))
+      tempHomes.push(webUiHome)
+      process.env.HERMES_WEB_UI_HOME = webUiHome
+      const { updateAvatar } = await import('../../packages/server/src/modules/hermes/controllers/profiles')
+      const dir = join(webUiHome, 'profile-metadata', Buffer.from('work').toString('base64url'))
+      const ctx: any = { params: { name: 'work' }, request: { body: { type: 'image', dataUrl: `data:image/png;base64,${Buffer.from('old-image').toString('base64')}` } }, status: 200 }
+      await updateAvatar(ctx)
+      const hash = ctx.body.avatar.url.split('/').at(-1)
+      ctx.request.body = { type: 'library', assetId: 'ip-006', revision: 3, previousImageHash: '0'.repeat(64) }
+      await updateAvatar(ctx)
+      expect(ctx.status).toBe(409)
+      expect(existsSync(join(dir, 'avatar.bin'))).toBe(true)
+      expect(JSON.parse(readFileSync(join(dir, 'avatar.json'), 'utf8')).type).toBe('image')
+      ctx.status = 200
+      ctx.request.body.previousImageHash = hash
+      await updateAvatar(ctx)
+      expect(ctx.status).toBe(200)
+      expect(JSON.parse(readFileSync(join(dir, 'avatar.json'), 'utf8')).type).toBe('library')
+      expect(existsSync(join(dir, 'avatar.bin'))).toBe(false)
     })
 
     it('deletes profile avatar metadata', async () => {

@@ -56,6 +56,7 @@ import { PetStateSocketServer } from '../modules/studio/sockets/pet-state'
 import { logger } from '../modules/studio/public/logging'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
+import { libraryAssetPath } from '../modules/studio/services/avatars/library'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
 import {
   createCorsOriginResolver,
@@ -521,6 +522,17 @@ export async function bootstrap() {
   registerReadinessRoute(app)
   registerDesktopShutdownRoute(app)
 
+  // The packaged public directory is not a directory listing: deny every
+  // non-manifest library filename before the SPA and static middleware run.
+  app.use(async (ctx, next) => {
+    if (!ctx.path.startsWith('/avatar-library/')) return next()
+    if (!libraryAssetPath(ctx.path) || (ctx.method !== 'GET' && ctx.method !== 'HEAD')) {
+      ctx.status = 404
+      return
+    }
+    await next()
+  })
+
   // Register all routes (handles auth internally)
   registerRoutes(app, [requireUserJwt, resolveUserProfile])
   console.log('[bootstrap] routes registered')
@@ -531,7 +543,8 @@ export async function bootstrap() {
   app.use(serve(distDir, {
     setHeaders(res, filePath) {
       const cacheControl = getStaticCacheControl(relative(distDir, filePath))
-      if (cacheControl) res.setHeader('Cache-Control', cacheControl)
+      const relativePath = relative(distDir, filePath).replaceAll('\\', '/')
+      if (cacheControl || libraryAssetPath(`/${relativePath}`)) res.setHeader('Cache-Control', cacheControl || 'public, max-age=31536000, immutable')
     },
   }))
   app.use(async (ctx) => {

@@ -1,4 +1,5 @@
 import { isGlobalOnlyCodingAgent } from '../../contracts/agents/native-coding-agents'
+import { libraryAvatar } from '../avatars/library'
 import type {
   GroupAgentPresetAgent,
   GroupAgentPresetDefinition,
@@ -50,6 +51,10 @@ function normalizeAvatar(value: unknown): string {
   let parsed: any
   try { parsed = JSON.parse(avatar) } catch {
     throw Object.assign(new Error('Invalid agent avatar'), { status: 400 })
+  }
+  if (parsed?.type === 'library') {
+    const reference = libraryAvatar(parsed.assetId, parsed.revision)
+    if (reference) return JSON.stringify({ type: 'library', assetId: reference.assetId, revision: 3 })
   }
   if (parsed?.type === 'generated' && typeof parsed.seed === 'string' && parsed.seed.trim() && parsed.seed.length <= 200) {
     return JSON.stringify({ type: 'generated', seed: parsed.seed.trim() })

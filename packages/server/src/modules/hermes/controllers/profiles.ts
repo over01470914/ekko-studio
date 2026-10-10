@@ -29,12 +29,16 @@ import { HermesSkillInjector } from '../services/skills/injector'
 import { listUserProfiles } from '../../studio/public/users'
 import { isHermesAgentAvailable } from '../../studio/public/agent-status-registry'
 import { readAppProfileAvatar } from '../services/profiles/app-profile-avatar'
+import { libraryAvatar } from '../../studio/public/avatar-library'
+import { createHash } from 'crypto'
 
 const bridgeCleanupClient = () => new AgentBridgeClient({ connectRetryMs: 0, timeoutMs: 5000 })
 const bridgeProfileRestartClient = () => new AgentBridgeClient({ connectRetryMs: 0 })
 
 interface ProfileAvatarMeta {
-  type: 'generated' | 'image'
+  type: 'generated' | 'image' | 'library'
+  assetId?: string
+  revision?: number
   seed?: string
   file?: string
   mime?: string
@@ -42,9 +46,12 @@ interface ProfileAvatarMeta {
 }
 
 interface ProfileAvatarResponse {
-  type: 'generated' | 'image'
+  type: 'generated' | 'image' | 'library'
   seed?: string
   dataUrl?: string
+  assetId?: string
+  revision?: number
+  url?: string
   updatedAt?: number
 }
 
@@ -151,6 +158,7 @@ function readProfileAvatar(name: string): ProfileAvatarResponse | null {
   if (!existsSync(metaPath)) return null
   try {
     const meta = JSON.parse(readFileSync(metaPath, 'utf-8')) as ProfileAvatarMeta
+    if (meta.type === 'library') return libraryAvatar(meta.assetId, meta.revision, meta.updatedAt)
     if (meta.type === 'generated') {
       return {
         type: 'generated',
@@ -158,13 +166,13 @@ function readProfileAvatar(name: string): ProfileAvatarResponse | null {
         updatedAt: meta.updatedAt,
       }
     }
-    if (meta.type === 'image' && meta.file && meta.mime) {
-      const imagePath = profileAvatarImagePath(name, meta.file)
+    if (meta.type === 'image' && meta.file === 'avatar.bin' && /^(image\/)(png|jpeg|webp)$/.test(meta.mime || '')) {
+      const imagePath = profileAvatarImagePath(name)
       if (!existsSync(imagePath)) return null
-      const data = readFileSync(imagePath).toString('base64')
+      const hash = createHash('sha256').update(readFileSync(imagePath)).digest('hex')
       return {
         type: 'image',
-        dataUrl: `data:${meta.mime};base64,${data}`,
+        url: `/api/hermes/profiles/${encodeURIComponent(name)}/avatar/image/${hash}`,
         updatedAt: meta.updatedAt,
       }
     }
@@ -454,13 +462,28 @@ export async function updateAvatar(ctx: any) {
     ctx.body = { error: `Profile name '${name}' is reserved` }
     return
   }
-  const body = ctx.request.body as { type?: string; seed?: string; dataUrl?: string }
+  const body = ctx.request.body as { type?: string; seed?: string; dataUrl?: string; assetId?: string; revision?: number; previousImageHash?: string }
   try {
-    const dir = profileMetadataDir(name)
-    await mkdir(dir, { recursive: true })
     const updatedAt = Date.now()
 
+    if (body.type === 'library') {
+      const reference = libraryAvatar(body.assetId, body.revision, updatedAt)
+      if (!reference) { ctx.status = 400; ctx.body = { error: 'Invalid library avatar' }; return }
+      if (body.previousImageHash !== undefined) {
+        const previous = readProfileAvatar(name)
+        if (previous?.type !== 'image' || previous.url?.split('/').at(-1) !== body.previousImageHash) {
+          ctx.status = 409; ctx.body = { error: 'Previous avatar changed' }; return
+        }
+      }
+      await mkdir(profileMetadataDir(name), { recursive: true })
+      await writeFile(profileAvatarMetaPath(name), JSON.stringify({ type: 'library', assetId: reference.assetId, revision: 3, updatedAt }), { mode: 0o600 })
+      if (body.previousImageHash !== undefined) rmSync(profileAvatarImagePath(name), { force: true })
+      ctx.body = { avatar: reference }
+      return
+    }
+
     if (body.type === 'generated') {
+      await mkdir(profileMetadataDir(name), { recursive: true })
       const seed = String(body.seed || name).trim() || name
       const meta: ProfileAvatarMeta = { type: 'generated', seed, updatedAt }
       rmSync(profileAvatarImagePath(name), { force: true })
@@ -471,6 +494,7 @@ export async function updateAvatar(ctx: any) {
 
     if (body.type === 'image' && typeof body.dataUrl === 'string') {
       const { mime, buffer } = parseAvatarDataUrl(body.dataUrl)
+      await mkdir(profileMetadataDir(name), { recursive: true })
       const meta: ProfileAvatarMeta = { type: 'image', file: 'avatar.bin', mime, updatedAt }
       await writeFile(profileAvatarImagePath(name), buffer, { mode: 0o600 })
       await writeFile(profileAvatarMetaPath(name), JSON.stringify(meta, null, 2) + '\n', { mode: 0o600 })
@@ -496,6 +520,21 @@ export async function deleteAvatar(ctx: any) {
     ctx.status = 500
     ctx.body = { error: err.message }
   }
+}
+
+export async function getAvatarImage(ctx: any) {
+  const name = String(ctx.params.name || '').trim()
+  if (denyProfile(ctx, name)) return
+  const avatar = readProfileAvatar(name)
+  if (avatar?.type !== 'image' || avatar.url !== ctx.path || !/^[a-f0-9]{64}$/.test(ctx.params.hash)) {
+    ctx.status = 404
+    return
+  }
+  const meta = JSON.parse(readFileSync(profileAvatarMetaPath(name), 'utf8')) as ProfileAvatarMeta
+  ctx.type = meta.mime
+  ctx.set('Cache-Control', 'private, max-age=86400')
+  ctx.set('ETag', `"${ctx.params.hash}"`)
+  ctx.body = createReadStream(profileAvatarImagePath(name))
 }
 
 export async function runtimeStatus(ctx: any) {
