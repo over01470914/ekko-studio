@@ -11,6 +11,7 @@ import {
   type ProfileRuntimeStatus,
 } from '@/api/hermes/profiles'
 import ProfileAvatarView from '@/components/hermes/profiles/ProfileAvatar.vue'
+import { pickLibraryAvatar } from '@/utils/avatar-library'
 import { useI18n } from 'vue-i18n'
 
 const emit = defineEmits<{
@@ -88,9 +89,6 @@ function openAvatarModal(profile: HermesProfile) {
   showAvatarModal.value = true
 }
 
-function randomSeed() {
-  return `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
 
 async function saveAvatar(avatar: ProfileAvatar) {
   if (!editingProfile.value) return
@@ -107,7 +105,7 @@ async function saveAvatar(avatar: ProfileAvatar) {
 }
 
 async function handleRandomAvatar() {
-  await saveAvatar({ type: 'generated', seed: randomSeed() })
+  await saveAvatar(pickLibraryAvatar(editingProfile.value?.avatar?.type === 'library' ? editingProfile.value.avatar.assetId : undefined))
 }
 
 async function handleResetAvatar() {

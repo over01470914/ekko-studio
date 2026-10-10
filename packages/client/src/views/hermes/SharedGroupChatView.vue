@@ -19,6 +19,8 @@ import { GROUP_CHAT_MEMBER_REMOVED, useGroupChatStore } from '@/stores/hermes/gr
 import { generateClientUuid } from '@/utils/client-random'
 import { copyToClipboard } from '@/utils/clipboard'
 import { parseStoredAvatar } from '@/utils/group-agent-avatar'
+import { libraryAvatarImage, pickLibraryAvatar } from '@/utils/avatar-library'
+import { getBaseUrlValue } from '@/api/client'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -427,10 +429,13 @@ async function submitGuestName(): Promise<void> {
     await joinInvite(routeInviteCode.value)
 }
 
-function randomizeGuestAvatar(): void {
-    const randomPart = generateClientUuid()
-    guestAvatarDraft.value = { type: 'generated', seed: `guest-${randomPart}` }
-    guestAvatarError.value = ''
+async function randomizeGuestAvatar(): Promise<void> {
+    try {
+        guestAvatarDraft.value = await libraryAvatarImage(pickLibraryAvatar(guestAvatarDraft.value.assetId), getBaseUrlValue())
+        guestAvatarError.value = ''
+    } catch {
+        guestAvatarError.value = t('profiles.avatar.saveFailed')
+    }
 }
 
 function resetGuestAvatar(): void {
