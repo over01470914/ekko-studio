@@ -780,6 +780,29 @@ describe('Profile Routes', () => {
       ok.body.destroy()
     })
 
+    it('exports a byte-exact JSON recovery snapshot only for the approved profile and hash', async () => {
+      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-json-'))
+      tempHomes.push(webUiHome)
+      process.env.HERMES_WEB_UI_HOME = webUiHome
+      const { updateAvatar, getAvatarMigrationSnapshot } = await import('../../packages/server/src/modules/hermes/controllers/profiles')
+      const bytes = Buffer.from([0, 255, 13, 129, 17, 4])
+      const upload: any = { params: { name: 'default' }, request: { body: { type: 'image', dataUrl: `data:image/png;base64,${bytes.toString('base64')}` } }, status: 200 }
+      await updateAvatar(upload)
+      const hash = upload.body.avatar.url.split('/').at(-1)
+      const ctx: any = { params: { name: 'default', hash }, state: { user: { id: 123, role: 'super_admin' } }, status: 200, set: vi.fn() }
+      await getAvatarMigrationSnapshot(ctx)
+      expect(ctx.body.sha256).toBe(hash)
+      expect(ctx.body.mime).toBe('image/png')
+      expect(Buffer.from(ctx.body.dataUrl.split(',')[1], 'base64')).toEqual(bytes)
+      expect(ctx.set).toHaveBeenCalledWith('Cache-Control', 'no-store')
+      const stale = { ...ctx, params: { name: 'default', hash: '0'.repeat(64) }, status: 200 }
+      await getAvatarMigrationSnapshot(stale)
+      expect(stale.status).toBe(404)
+      const unmapped = { ...ctx, params: { name: 'work', hash }, status: 200 }
+      await getAvatarMigrationSnapshot(unmapped)
+      expect(unmapped.status).toBe(404)
+    })
+
     it('stores only library IDs and revision, and denies unknown assets before writing', async () => {
       const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-library-'))
       tempHomes.push(webUiHome)

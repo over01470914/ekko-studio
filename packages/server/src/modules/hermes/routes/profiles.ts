@@ -13,6 +13,7 @@ profileRoutes.post('/api/hermes/profiles/:name/restart', ctrl.restartProfileRunt
 profileRoutes.post('/api/hermes/profiles/:name/gateway/restart', ctrl.restartGatewayForProfile)
 profileRoutes.put('/api/hermes/profiles/:name/avatar', ctrl.updateAvatar)
 profileRoutes.get('/api/hermes/profiles/:name/avatar/image/:hash', ctrl.getAvatarImage)
+profileRoutes.get('/api/hermes/profiles/:name/avatar/migration-snapshot/:hash', ctrl.getAvatarMigrationSnapshot)
 profileRoutes.delete('/api/hermes/profiles/:name/avatar', ctrl.deleteAvatar)
 profileRoutes.get('/api/hermes/profiles/:name', ctrl.get)
 profileRoutes.delete('/api/hermes/profiles/:name', ctrl.remove)

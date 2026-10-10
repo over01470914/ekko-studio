@@ -886,16 +886,53 @@ export async function updateRoomAgentAvatar(ctx: any) {
         ctx.status = 409; ctx.body = { error: 'Agent update in progress' }; return
     }
     const body = ctx.request.body
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1 || typeof body.avatar !== 'string') {
-        ctx.status = 400; ctx.body = { error: 'avatar string is required' }; return
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 2 ||
+        typeof body.avatar !== 'string' || typeof body.previousAvatar !== 'string') {
+        ctx.status = 400; ctx.body = { error: 'avatar and previousAvatar strings required' }; return
     }
     let avatar: string
     try { avatar = normalizeRoomAgentAvatar(body.avatar) }
     catch (err: any) { ctx.status = 400; ctx.body = { error: err.message }; return }
-    const updated = storage.setRoomAgentAvatar(roomId, agentId, avatar)
+    const updated = storage.setRoomAgentAvatar(roomId, agentId, avatar, body.previousAvatar)
     if (!updated) { ctx.status = 409; ctx.body = { error: 'Agent changed' }; return }
     chatServer.broadcastRoomAgents(roomId)
     ctx.body = { agent: updated }
+}
+
+/** Bounded historical snapshot access; GET returns raw storage, never the live roster fallback. */
+export async function roomMemberAvatarSnapshots(ctx: any) {
+    if (!chatServer) { ctx.status = 503; ctx.body = { error: 'Group chat not initialized' }; return }
+    const roomId = ctx.params.roomId
+    const storage = chatServer.getStorage()
+    if (roomId !== 'muzvuy30vy9c4k' || !storage.getRoom(roomId)) {
+        ctx.status = 404; ctx.body = { error: 'Room not found' }; return
+    }
+    if (!canManageRoom(storage, roomId, ctx.state?.user)) {
+        ctx.status = 403; ctx.body = { error: 'Access denied' }; return
+    }
+    const snapshots = storage.listRoomMemberAvatarSnapshots(roomId)
+    if (snapshots.length > 256) { ctx.status = 409; ctx.body = { error: 'Snapshot limit exceeded' }; return }
+    if (ctx.method === 'GET') { ctx.body = { snapshots }; return }
+    const memberId = ctx.params.memberId
+    const body = ctx.request.body
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 2 ||
+        typeof body.avatar !== 'string' || typeof body.previousAvatar !== 'string') {
+        ctx.status = 400; ctx.body = { error: 'avatar and previousAvatar strings required' }; return
+    }
+    const member = snapshots.find((row: { id: string }) => row.id === memberId)
+    if (!member) { ctx.status = 404; ctx.body = { error: 'Snapshot not found' }; return }
+    if (member.avatar !== body.previousAvatar) {
+        ctx.status = 409; ctx.body = { error: 'Snapshot changed' }; return
+    }
+    let avatar: string
+    try { avatar = normalizeRoomAgentAvatar(body.avatar) }
+    catch (err: any) { ctx.status = 400; ctx.body = { error: err.message }; return }
+    if (!storage.setRoomMemberAvatarSnapshot(roomId, memberId, body.previousAvatar, avatar)) {
+        ctx.status = 409; ctx.body = { error: 'Snapshot changed' }; return
+    }
+    const after = storage.listRoomMemberAvatarSnapshots(roomId).find((row: { id: string }) => row.id === memberId)
+    if (after?.avatar !== avatar) { ctx.status = 409; ctx.body = { error: 'Snapshot readback failed' }; return }
+    ctx.body = { snapshot: after }
 }
 
 /** Authenticated owner's own persisted room-member avatar snapshot (not an agent). */

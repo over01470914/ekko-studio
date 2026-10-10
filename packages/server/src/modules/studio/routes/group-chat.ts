@@ -79,6 +79,8 @@ groupChatRoutes.put('/api/studio/group-chat/rooms/:roomId/agents/:agentId', ctrl
 groupChatRoutes.put('/api/studio/group-chat/rooms/:roomId/agents/:agentId/avatar', ctrl.updateRoomAgentAvatar)
 groupChatRoutes.get('/api/studio/group-chat/rooms/:roomId/members/me/avatar', ctrl.roomMemberAvatar)
 groupChatRoutes.put('/api/studio/group-chat/rooms/:roomId/members/me/avatar', ctrl.roomMemberAvatar)
+groupChatRoutes.get('/api/studio/group-chat/rooms/:roomId/member-avatar-snapshots', ctrl.roomMemberAvatarSnapshots)
+groupChatRoutes.put('/api/studio/group-chat/rooms/:roomId/member-avatar-snapshots/:memberId', ctrl.roomMemberAvatarSnapshots)
 groupChatRoutes.put('/api/studio/group-chat/rooms/:roomId/agents/:agentId/host-access', ctrl.updateRoomAgentHostAccess)
 groupChatRoutes.get('/api/studio/group-chat/rooms/:roomId/agents', ctrl.listRoomAgents)
 groupChatRoutes.delete('/api/studio/group-chat/rooms/:roomId/members/:userId', ctrl.removeRoomMember)

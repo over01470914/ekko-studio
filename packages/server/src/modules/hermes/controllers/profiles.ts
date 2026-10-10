@@ -522,6 +522,27 @@ export async function deleteAvatar(ctx: any) {
   }
 }
 
+/** Explicit protected JSON export for byte-exact offline migration recovery; never in profile lists. */
+export async function getAvatarMigrationSnapshot(ctx: any) {
+  const name = String(ctx.params.name || '').trim()
+  if (denyProfile(ctx, name)) return
+  if (!['default', 'orchestrator', 'artist', 'game-designer', 'technical-artist', 'software-engineer',
+    'quality-engineer', 'platform-engineer', 'shipping', 'developer', 'qa', 'codex-proxy'].includes(name)) {
+    ctx.status = 404; return
+  }
+  const avatar = readProfileAvatar(name)
+  const hash = ctx.params.hash
+  if (avatar?.type !== 'image' || !/^[a-f0-9]{64}$/.test(hash) || avatar.url !==
+    `/api/hermes/profiles/${encodeURIComponent(name)}/avatar/image/${hash}`) {
+    ctx.status = 404; return
+  }
+  const meta = JSON.parse(readFileSync(profileAvatarMetaPath(name), 'utf8')) as ProfileAvatarMeta
+  const bytes = readFileSync(profileAvatarImagePath(name))
+  if (bytes.length > 2 * 1024 * 1024) { ctx.status = 413; return }
+  ctx.set('Cache-Control', 'no-store')
+  ctx.body = { mime: meta.mime, sha256: hash, dataUrl: `data:${meta.mime};base64,${bytes.toString('base64')}` }
+}
+
 export async function getAvatarImage(ctx: any) {
   const name = String(ctx.params.name || '').trim()
   if (denyProfile(ctx, name)) return

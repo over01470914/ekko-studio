@@ -2760,10 +2760,11 @@ class ChatStorage {
     }
 
     /** Avatar-only persistence: intentionally never touches executor/runtime configuration. */
-    setRoomAgentAvatar(roomId: string, agentRef: string, avatar: string): RoomAgent | null {
+    setRoomAgentAvatar(roomId: string, agentRef: string, avatar: string, previousAvatar?: string): RoomAgent | null {
         const result = this.db()?.prepare(
-            `UPDATE gc_room_agents SET avatar = ? WHERE roomId = ? AND removedAt = 0 AND (id = ? OR agentId = ?)`
-        ).run(avatar, roomId, agentRef, agentRef)
+            `UPDATE gc_room_agents SET avatar = ? WHERE roomId = ? AND removedAt = 0 AND (id = ? OR agentId = ?)
+             AND (? IS NULL OR avatar = ?)`
+        ).run(avatar, roomId, agentRef, agentRef, previousAvatar ?? null, previousAvatar ?? null)
         return result?.changes ? this.getRoomAgent(roomId, agentRef) : null
     }
 
@@ -3133,6 +3134,21 @@ class ChatStorage {
             }
         }
         return members.map(({ authUserId: _authUserId, ...member }) => member)
+    }
+
+    /** Raw persisted snapshots include removed agents and rows hidden by the live roster. */
+    listRoomMemberAvatarSnapshots(roomId: string): { id: string; userId: string; authUserId: number | null; avatar: string }[] {
+        return (this.db()?.prepare(
+            'SELECT id, userId, authUserId, avatar FROM gc_room_members WHERE roomId = ? ORDER BY id'
+        ).all(roomId) || []) as { id: string; userId: string; authUserId: number | null; avatar: string }[]
+    }
+
+    /** CAS only the persisted avatar column; no membership or runtime changes. */
+    setRoomMemberAvatarSnapshot(roomId: string, memberId: string, oldAvatar: string, avatar: string): boolean {
+        const result = this.db()?.prepare(
+            'UPDATE gc_room_members SET avatar = ? WHERE roomId = ? AND id = ? AND avatar = ?'
+        ).run(avatar, roomId, memberId, oldAvatar)
+        return result?.changes === 1
     }
 
     removeRoomMembersForAgent(roomId: string, agent: Pick<RoomAgent, 'agentId' | 'name'>): void {

@@ -10704,6 +10704,50 @@
         ]
       }
     },
+    "/api/hermes/profiles/{name}/avatar/migration-snapshot/{hash}": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Get :hash",
+        "description": "GET /api/hermes/profiles/:name/avatar/migration-snapshot/:hash",
+        "operationId": "getAvatarMigrationSnapshot",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/hermes/profiles/{name}/export": {
       "post": {
         "tags": [
@@ -15510,10 +15554,14 @@
                 "properties": {
                   "avatar": {
                     "type": "string"
+                  },
+                  "previousAvatar": {
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "avatar"
+                  "avatar",
+                  "previousAvatar"
                 ]
               }
             }
@@ -16213,6 +16261,108 @@
                 },
                 "required": [
                   "inviteCode"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/group-chat/rooms/{roomId}/member-avatar-snapshots": {
+      "get": {
+        "tags": [
+          "Group Chat"
+        ],
+        "summary": "Get member-avatar-snapshots",
+        "description": "GET /api/studio/group-chat/rooms/:roomId/member-avatar-snapshots",
+        "operationId": "roomMemberAvatarSnapshots",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/studio/group-chat/rooms/{roomId}/member-avatar-snapshots/{memberId}": {
+      "put": {
+        "tags": [
+          "Group Chat"
+        ],
+        "summary": "Update :memberId",
+        "description": "PUT /api/studio/group-chat/rooms/:roomId/member-avatar-snapshots/:memberId",
+        "operationId": "roomMemberAvatarSnapshots",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memberId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string"
+                  },
+                  "previousAvatar": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "avatar",
+                  "previousAvatar"
                 ]
               }
             }
