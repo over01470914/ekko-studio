@@ -44,6 +44,8 @@ from bridge_runtime import (
     _tool_names_from_definitions,
 )
 
+CLARIFY_TIMEOUT_SECONDS = 300
+
 
 def _bind_session_workspace_cwd(session_id: str, workspace: str | None) -> bool:
     workspace_cwd = str(workspace or "").strip()
@@ -152,6 +154,7 @@ class RunRecord:
     error: str | None = None
     deltas: list[str] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
+    worker_thread: threading.Thread | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -1434,28 +1437,108 @@ class AgentPool:
         return callback
 
     def _clarify_callback(self, session_id: str):
-        def callback(question: str, choices: list[str] | None = None) -> str:
-            clarify_id = uuid.uuid4().hex
-            response_queue: queue.Queue[str] = queue.Queue(maxsize=1)
+        def callback(
+            question: str | list[dict[str, Any]],
+            choices: list[str] | None = None,
+            *,
+            multi_select: bool = False,
+            questions: list[dict[str, Any]] | None = None,
+        ) -> str | dict[str, Any]:
+            # 5eea87882a calls callback(normalized_questions) directly. Earlier
+            # kernels use two positional arguments, optionally with batch kwargs.
+            modern = isinstance(question, list)
+            batch = question if modern else questions
+            deadline = time.monotonic() + CLARIFY_TIMEOUT_SECONDS
             with self._lock:
-                self._clarify_requests[clarify_id] = response_queue
+                session = self._sessions.get(session_id)
+                run_id = session.current_run_id if session else None
+            if session is None:
+                notice = "The Studio session is no longer available; no question was delivered."
+                if modern:
+                    return {"answers": {}, "outcome": "undelivered", "notice": notice}
+                if batch is not None:
+                    return {"answers": {}, "timed_out": True, "notice": notice}
+                return ""
+
+            def cancelled() -> bool:
+                with self._lock:
+                    return (
+                        self._sessions.get(session_id) is not session
+                        or session.current_run_id != run_id
+                        or bool(getattr(session.agent, "_interrupt_requested", False))
+                    )
+
+            if batch is not None:
+                answers: dict[str, Any] = {}
+                outcome = "submitted"
+                for entry in batch:
+                    response, outcome = self._clarify_question(
+                        session_id, entry["question"], entry.get("choices"),
+                        bool(entry.get("multi_select")), deadline, cancelled,
+                    )
+                    if outcome != "submitted":
+                        break
+                    # None is a deliberate skip; absent qids remain unanswered.
+                    answers[entry["qid"]] = response if response else None
+                if modern:
+                    return {"answers": answers, "outcome": outcome}
+                return {"answers": answers, "timed_out": outcome != "submitted"}
+
+            response, outcome = self._clarify_question(
+                session_id, str(question or ""), choices, multi_select, deadline, cancelled,
+            )
+            if outcome == "timed_out":
+                from tools import clarify_tool
+
+                return getattr(clarify_tool, "TIMEOUT_RESPONSE", "[user did not respond within 5m]")
+            return response or ""
+
+        return callback
+
+    def _clarify_question(
+        self, session_id: str, question: str, choices: list[str] | None,
+        multi_select: bool, deadline: float, cancelled: Callable[[], bool],
+    ) -> tuple[str | None, str]:
+        if cancelled():
+            return None, "cancelled"
+        if time.monotonic() >= deadline:
+            return None, "timed_out"
+        clarify_id = uuid.uuid4().hex
+        response_queue: queue.Queue[str] = queue.Queue(maxsize=1)
+        with self._lock:
+            self._clarify_requests[clarify_id] = response_queue
+        outcome = "submitted"
+        try:
             self._append_event(session_id, {
                 "event": "clarify.requested",
                 "clarify_id": clarify_id,
-                "question": str(question or ""),
+                "question": question,
                 "choices": list(choices) if choices else None,
-                "timeout_ms": 300_000,
+                "multi_select": multi_select,
+                "timeout_ms": max(0, int((deadline - time.monotonic()) * 1000)),
             })
-            try:
-                user_response = response_queue.get(timeout=300)
-            except queue.Empty:
-                user_response = "[user did not respond within 5m]"
-            finally:
-                with self._lock:
-                    self._clarify_requests.pop(clarify_id, None)
-            return user_response
-
-        return callback
+            while True:
+                if cancelled():
+                    outcome = "cancelled"
+                    return None, outcome
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    outcome = "timed_out"
+                    return None, outcome
+                try:
+                    return response_queue.get(timeout=min(0.1, remaining)), outcome
+                except queue.Empty:
+                    continue
+        finally:
+            with self._lock:
+                self._clarify_requests.pop(clarify_id, None)
+            if outcome != "submitted":
+                self._append_event(session_id, {
+                    "event": "clarify.resolved",
+                    "clarify_id": clarify_id,
+                    "resolved": False,
+                    "reason": outcome,
+                })
 
     def _approval_dispatcher(self, command: str, description: str, *, allow_permanent: bool = True) -> str:
         session_id = str(getattr(self._run_context, "session_id", "") or "")
@@ -1709,11 +1792,15 @@ class AgentPool:
             session.boundary_pending_run_id = None
             session.boundary_reached_run_id = None
             session.last_used_at = time.time()
-            session_cwd_bound = _bind_session_workspace_cwd(session.session_id, workspace)
+            session_cwd_bound = False
             try:
+                session_cwd_bound = _bind_session_workspace_cwd(session.session_id, workspace)
                 context_event = self._bridge_context_ready_event(session, instructions, profile)
                 if context_event:
                     record.events.append(_jsonable(context_event))
+            except BaseException as exc:
+                self._fail_unexpected_run(session, record, exc)
+                raise
             finally:
                 if session_cwd_bound:
                     _clear_session_workspace_cwd()
@@ -1724,10 +1811,49 @@ class AgentPool:
             daemon=True,
             name=f"hermes-bridge-run-{run_id[:8]}",
         )
-        thread.start()
+        # Status readers take the same session lock, so they cannot mistake a
+        # registered thread which has not started yet for a dead worker.
+        with session.lock:
+            record.worker_thread = thread
+            try:
+                thread.start()
+            except BaseException as exc:
+                self._fail_unexpected_run(session, record, exc)
+                raise
         return record
 
     def _run_chat(self, session: AgentSession, record: RunRecord, message: Any, storage_message: Any | None = None, instructions: str | None = None, conversation_history: list[dict[str, Any]] | None = None, profile: str | None = None, force_compress: bool = False, workspace: str | None = None, source: str | None = None, reasoning_effort: str | None = None) -> None:
+        try:
+            self._run_chat_inner(session, record, message, storage_message, instructions, conversation_history, profile, force_compress, workspace, source, reasoning_effort)
+        except BaseException as exc:
+            # Includes setup failures outside the inner try and SystemExit from
+            # agent/tool code. These terminate this run, not the bridge worker.
+            self._fail_unexpected_run(session, record, exc)
+        finally:
+            self._fail_unexpected_run(session, record, RuntimeError("Hermes run worker exited without a terminal result"))
+
+    def _fail_unexpected_run(self, session: AgentSession | None, record: RunRecord, exc: BaseException) -> None:
+        with session.lock if session else self._lock:
+            if record.status != "running":
+                return
+            record.error = f"{type(exc).__name__}: {exc}"
+            record.result = {"error": record.error, "failed": True}
+            record.ended_at = time.time()
+            record.status = "error"
+            if session is not None and session.current_run_id == record.run_id:
+                self._reset_boundary_run(session, record.run_id)
+                session.running = False
+                session.current_run_id = None
+                session.last_used_at = time.time()
+
+    def _check_run_worker(self, record: RunRecord) -> None:
+        with self._lock:
+            session = self._sessions.get(record.session_id)
+        with session.lock if session else self._lock:
+            if record.status == "running" and record.worker_thread is not None and not record.worker_thread.is_alive():
+                self._fail_unexpected_run(session, record, RuntimeError("Hermes run worker exited without a terminal result"))
+
+    def _run_chat_inner(self, session: AgentSession, record: RunRecord, message: Any, storage_message: Any | None = None, instructions: str | None = None, conversation_history: list[dict[str, Any]] | None = None, profile: str | None = None, force_compress: bool = False, workspace: str | None = None, source: str | None = None, reasoning_effort: str | None = None) -> None:
         with _profile_env(profile):
             _refresh_approval_allowlist()
             _install_execute_code_approval_memory_patch()
@@ -1900,7 +2026,6 @@ class AgentPool:
                 with session.lock:
                     if isinstance(result.get("messages"), list):
                         session.history = result["messages"]
-                    record.status = "interrupted" if result.get("interrupted") else "complete"
                     record.result = result
                     record.ended_at = time.time()
                     if boundary_interrupted:
@@ -1910,6 +2035,7 @@ class AgentPool:
                             "finish_reason": "boundary_interrupt",
                         })
                         self._clear_completed_boundary_interrupt(session.agent)
+                    record.status = "interrupted" if result.get("interrupted") else "complete"
                     self._reset_boundary_run(session, record.run_id)
                     session.running = False
                     session.current_run_id = None
@@ -1933,7 +2059,6 @@ class AgentPool:
                         pass
                 with session.lock:
                     if boundary_interrupted:
-                        record.status = "interrupted"
                         record.error = None
                         record.result = {
                             "interrupted": True,
@@ -1947,10 +2072,10 @@ class AgentPool:
                         })
                         self._clear_completed_boundary_interrupt(session.agent)
                     else:
-                        record.status = "error"
                         record.error = str(exc)
                         record.result = {"error": str(exc), "traceback": traceback.format_exc()}
                     record.ended_at = time.time()
+                    record.status = "interrupted" if boundary_interrupted else "error"
                     self._reset_boundary_run(session, record.run_id)
                     session.running = False
                     session.current_run_id = None
@@ -2697,6 +2822,7 @@ class AgentPool:
             record = self._runs.get(run_id)
         if record is None:
             raise KeyError(f"unknown run: {run_id}")
+        self._check_run_worker(record)
         return {
             "run_id": record.run_id,
             "session_id": record.session_id,
@@ -2715,6 +2841,10 @@ class AgentPool:
             record = self._runs.get(run_id)
         if record is None:
             raise KeyError(f"unknown run: {run_id}")
+        self._check_run_worker(record)
+        # Read status first. If the worker finishes while deltas are copied,
+        # report running once more so the next poll can include the final tail.
+        status = record.status
         cursor = max(0, int(cursor or 0))
         deltas = list(record.deltas)
         next_cursor = len(deltas)
@@ -2725,12 +2855,12 @@ class AgentPool:
         return {
             "run_id": record.run_id,
             "session_id": record.session_id,
-            "status": record.status,
+            "status": status,
             "delta": "".join(deltas[cursor:]),
             "cursor": next_cursor,
             "output": "".join(deltas),
-            "done": record.status != "running",
-            "result": record.result if record.status != "running" else None,
+            "done": status != "running",
+            "result": record.result if status != "running" else None,
             "error": record.error,
             "events": new_events,
             "event_cursor": next_event_cursor,
@@ -2847,6 +2977,7 @@ class AgentPool:
     def status(self, session_id: str) -> dict[str, Any]:
         with self._lock:
             session = self._sessions.get(session_id)
+            record = self._runs.get(session.current_run_id) if session else None
         if session is None:
             return {
                 "session_id": session_id,
@@ -2854,6 +2985,8 @@ class AgentPool:
                 "running": False,
                 "message_count": 0,
             }
+        if record is not None:
+            self._check_run_worker(record)
         with session.lock:
             return {
                 "session_id": session_id,

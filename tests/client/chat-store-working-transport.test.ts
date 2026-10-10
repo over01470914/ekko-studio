@@ -132,6 +132,16 @@ afterEach(async () => {
 })
 
 describe('sidebar activity through the real chat API', () => {
+  it('invalidates pending history without clearing the selected session', async () => {
+    await store.switchSession('one')
+    const selected = store.activeSession
+    const switching = store.switchSession('one')
+    store.invalidateSessionSelection()
+    expect(await switching).toBe(false)
+    expect(store.activeSessionId).toBe('one')
+    expect(store.activeSession).toBe(selected)
+    expect(store.isLoadingMessages).toBe(false)
+  })
   it.each(['clear', 'replace', 'server'])('does not submit a prepared send after %s invalidation', async (action) => {
     await store.switchSession('one')
     const { useAppStore } = await import('@/stores/hermes/app')

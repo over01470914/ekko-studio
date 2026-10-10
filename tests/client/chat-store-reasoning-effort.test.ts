@@ -96,6 +96,27 @@ describe('chat store per-session reasoning effort', () => {
     expect(sessionsApi.setSessionReasoningEffort).toHaveBeenCalledWith('s1', 'low')
   })
 
+  it('carries a draft effort into the new session first run without a settings write', async () => {
+    const store = useChatStore()
+    const session = store.newChat({ model: 'draft-model', provider: 'draft-provider', reasoningEffort: 'max' })
+    await store.sendMessage('First message')
+    expect(chatApi.startRunViaSocket.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      session_id: session.id, reasoning_effort: 'max', model: 'draft-model', provider: 'draft-provider',
+    }))
+    expect(sessionsApi.setSessionReasoningEffort).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { provider: 'moa', model: 'ensemble' },
+    { codingAgentId: 'codex' as const, codingAgentMode: 'global' as const },
+  ])('does not carry a draft effort into MoA or global CLI configuration: %j', async options => {
+    const store = useChatStore()
+    const session = store.newChat({ ...options, reasoningEffort: 'max' })
+    expect(session.reasoningEffort).toBeUndefined()
+    await store.sendMessage('First message')
+    expect(chatApi.startRunViaSocket.mock.calls.at(-1)?.[0]?.reasoning_effort).toBeUndefined()
+  })
+
   it('persists the default value as an empty server setting', async () => {
     const store = useChatStore()
     const session = makeSession('s2')
@@ -417,6 +438,13 @@ describe('composer preset and fast mode run selection', () => {
     expect(store.newChat({ model: 'quick', provider: 'openai' }).reasoningEffort).toBeUndefined()
     expect(store.newChat({ model: 'reasoner', provider: 'openai' }).reasoningEffort).toBe('high')
     expect(store.newChat({ source: 'coding_agent', codingAgentId: 'codex', codingAgentMode: 'global' }).reasoningEffort).toBeUndefined()
+  })
+  it.each(['low', ''])('preserves explicit draft effort %j over the default preset', reasoningEffort => {
+    const { store } = setup()
+    useModelPresetsStore().hydrate('default', { composer_steps: [step], composer_default_step_id: step.id })
+    const session = store.newChat({ model: step.modelId, provider: step.providerId, reasoningEffort })
+    expect(session.reasoningEffort || '').toBe(reasoningEffort)
+    expect(session.modelPresetId).toBeUndefined()
   })
   it('preserves explicit runtime credentials when the configured default does not change provider', () => {
     const { store } = setup()

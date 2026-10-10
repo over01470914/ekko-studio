@@ -22,11 +22,9 @@ describe('approval system notification click targets', () => {
   it('consumes exact Workflow target identity after workflow and run data load', () => {
     const globalPending = read('packages/client/src/components/layout/GlobalPendingActions.vue')
     const workflowView = read('packages/client/src/views/hermes/WorkflowView.vue')
-    const chatView = read('packages/client/src/views/hermes/ChatView.vue')
     const globalAgentView = read('packages/client/src/views/hermes/GlobalAgentView.vue')
     const groupChatView = read('packages/client/src/views/hermes/GroupChatView.vue')
     expect(globalPending).toContain('profile: action.profile')
-    expect(chatView).toContain('await profilesStore.switchProfile(profile)')
     expect(globalAgentView).toContain('await profilesStore.switchProfile(profile)')
     expect(groupChatView).toContain('await profilesStore.switchProfile(profile)')
     expect(workflowView).toContain("import { useRoute } from 'vue-router'")

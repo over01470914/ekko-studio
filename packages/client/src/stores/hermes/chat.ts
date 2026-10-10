@@ -1,6 +1,4 @@
-import { useModelPresetsStore } from './model-presets'
-import type { ModelPreset } from '@/types/model-presets'
-import { modelPresetIssue, modelSupportsFastMode } from '@/utils/model-presets'
+import { createSessionModelPresets } from '@/services/session-model-presets'
 import { chatSessionAgentAvatar } from '@/utils/chat-agent-avatar'
 import { isNativeCodingAgent } from '@/utils/agent-catalog'
 import { historySessionSource, isBuiltinEkkoSession } from '@/utils/hermes/session-agent'
@@ -1513,9 +1511,6 @@ export const useChatStore = defineStore('chat', () => {
   let switchSessionRequestSequence = 0
   const olderMessageLoads = new WeakMap<Session, object>()
   let activeSelectionSequence = 0
-  const modelPresetWrites = new Map<string, Promise<boolean>>()
-  const modelPresetSwitching = ref<Set<string>>(new Set())
-  const isApplyingModelPreset = computed(() => !!activeSessionId.value && modelPresetSwitching.value.has(activeSessionId.value))
   const reasoningEffortWriteChains = new Map<string, Promise<boolean>>()
   const reasoningEffortWriteTargets = new Map<string, string | undefined>()
   const reasoningEffortConfirmedValues = new Map<string, string | undefined>()
@@ -1618,6 +1613,10 @@ export const useChatStore = defineStore('chat', () => {
   const isAborting = computed(() => abortState.value?.aborting === true)
 
   const activeSession = ref<Session | null>(null)
+  const sessionModelPresets = createSessionModelPresets({
+    sessions, activeSession, activeSessionId, switchSessionModel, setSessionReasoningEffort, clearCodingAgentRuntimeCredentials,
+  })
+  const { applyModelPreset, setSessionFastMode, sessionSupportsFastMode, isApplyingModelPreset } = sessionModelPresets
   const messages = computed<Message[]>(() => activeSession.value?.messages || [])
   const workspaceRunChangesBySession = ref<Map<string, Map<string, WorkspaceRunChangeSummary>>>(new Map())
 
@@ -2019,6 +2018,7 @@ export const useChatStore = defineStore('chat', () => {
     baseUrl?: string
     apiKey?: string
     apiMode?: ProviderApiMode
+    reasoningEffort?: string
   } = {}): Session {
     const codingAgentId = options.codingAgentId || agentToCodingAgentId(options.agent)
     const source = historySessionSource({ ...options, codingAgentId, source: runtimeMode.value === 'global_agent' ? 'global_agent' : options.source || 'cli' })
@@ -2043,6 +2043,7 @@ export const useChatStore = defineStore('chat', () => {
       baseUrl: options.baseUrl,
       apiKey: options.apiKey,
       apiMode: options.apiMode,
+      reasoningEffort: options.reasoningEffort || undefined,
     }
     sessions.value.unshift(session)
     return session
@@ -2071,6 +2072,11 @@ export const useChatStore = defineStore('chat', () => {
     }
     sessions.value.unshift(session)
     return session
+  }
+
+  function invalidateSessionSelection() {
+    activeSelectionSequence++
+    switchSessionRequestSequence++
   }
 
   async function switchSession(sessionId: string, focusId?: string | null) {
@@ -2250,7 +2256,10 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
           resolve()
-        }, activeSession.value?.profile, runtimeTransport())
+        }, activeSession.value?.profile, runtimeTransport(), () => {
+          clearTimeout(timeout)
+          reject(new Error('Session resume cancelled'))
+        })
       })
       // A search hit can be older than both the resume page and the live-chat
       // history cap. Only explicit message navigation may extend that window.
@@ -2264,8 +2273,10 @@ export const useChatStore = defineStore('chat', () => {
       loaded = isCurrentSelection() && (!focusId || !!activeSession.value?.messages.some(message => message.id === focusId))
       if (isCurrentSelection() && !loaded) focusMessageId.value = null
     } catch (err) {
-      console.error('Failed to load session messages via resume:', err)
-      if (isCurrentSelection()) focusMessageId.value = null
+      if (isCurrentSelection()) {
+        console.error('Failed to load session messages via resume:', err)
+        focusMessageId.value = null
+      }
     } finally {
       endMessageLoad(sessionId, requestSequence)
     }
@@ -2335,6 +2346,7 @@ export const useChatStore = defineStore('chat', () => {
     baseUrl?: string
     apiKey?: string
     apiMode?: ProviderApiMode
+    reasoningEffort?: string
   } = {}): Session {
     const appStore = useAppStore()
     const storageSource = runtimeMode.value === 'global_agent' ? 'global_agent' : options.source || 'cli'
@@ -2354,22 +2366,9 @@ export const useChatStore = defineStore('chat', () => {
       baseUrl: options.baseUrl,
       apiKey: options.apiKey,
       apiMode: options.apiMode,
+      reasoningEffort: isGlobalCodingAgent || options.provider === 'moa' ? undefined : options.reasoningEffort,
     })
-    if (!isGlobalCodingAgent) {
-      const presetConfig = useModelPresetsStore().get(session.profile || useProfilesStore().activeProfileName || 'default')
-      const step = presetConfig.presets.find(entry => entry.id === presetConfig.defaultPresetId)
-      const groups = appStore.profileModelGroups.find(entry => entry.profile === session.profile)?.groups || appStore.modelGroups
-      if (step && !modelPresetIssue(step, groups) &&
-        (!options.model || options.model === step.modelId) && (!options.provider || options.provider === step.providerId)) {
-        const previousProvider = session.provider
-        session.model = step.modelId
-        session.provider = step.providerId
-        session.reasoningEffort = step.reasoningLevel || undefined
-        session.modelPresetId = step.id
-        // A default may change provider; don't retain credentials for the old one.
-        if (previousProvider !== step.providerId && (options.baseUrl || options.apiKey)) clearCodingAgentRuntimeCredentials(session)
-      }
-    }
+    if (!isGlobalCodingAgent) sessionModelPresets.applyDefaultPreset(session, options)
     void switchSession(session.id)
     return session
   }
@@ -2417,72 +2416,6 @@ export const useChatStore = defineStore('chat', () => {
     return true
   }
 
-  function composerModelGroups(session: Session) {
-    const app = useAppStore()
-    return app.profileModelGroups.find(entry => entry.profile === session.profile)?.groups || app.modelGroups
-  }
-
-  function sessionSupportsFastMode(session: Session): boolean {
-    // Only Ekko's API providers implement priority inference; native CLI engines
-    // must not show a working toggle until their execution adapters support it.
-    if (!isBuiltinEkkoSession(session)) return false
-    if (session.codingAgentMode === 'global') return false
-    const app = useAppStore()
-    const groups = composerModelGroups(session)
-    const provider = session.provider || app.selectedProvider
-    const group = groups.find(entry => entry.provider === provider)
-    const apiMode = normalizeCodingAgentApiMode(session.apiMode || group?.api_mode, inferCodingAgentApiMode(provider, session.baseUrl || group?.base_url))
-    if (apiMode !== 'chat_completions' && apiMode !== 'codex_responses') return false
-    return modelSupportsFastMode(groups, provider, session.model || app.selectedModel)
-  }
-
-  function setSessionFastMode(sessionId: string, enabled: boolean): boolean {
-    const session = sessions.value.find(entry => entry.id === sessionId) || (activeSession.value?.id === sessionId ? activeSession.value : null)
-    if (!session || (enabled && !sessionSupportsFastMode(session))) return false
-    session.fastMode = enabled
-    if (activeSession.value?.id === sessionId) activeSession.value.fastMode = enabled
-    return true
-  }
-
-  async function applyModelPreset(sessionId: string, step: ModelPreset): Promise<boolean> {
-    const session = sessions.value.find(entry => entry.id === sessionId) || (activeSession.value?.id === sessionId ? activeSession.value : null)
-    if (!session || session.provider === 'moa' || session.codingAgentMode === 'global' || modelPresetIssue(step, composerModelGroups(session))) return false
-    if (modelPresetWrites.has(sessionId)) return false
-    const previous = { model: session.model, provider: session.provider, apiMode: session.apiMode, baseUrl: session.baseUrl, apiKey: session.apiKey, reasoning: session.reasoningEffort, fastMode: session.fastMode }
-    modelPresetSwitching.value = new Set(modelPresetSwitching.value).add(sessionId)
-    const write = (async () => {
-      try {
-        const changesModel = session.model !== step.modelId || session.provider !== step.providerId
-        if (changesModel && !await switchSessionModel(step.modelId, step.providerId, sessionId)) return false
-        if (await setSessionReasoningEffort(sessionId, step.reasoningLevel || '')) {
-          session.modelPresetId = step.id
-          if (activeSession.value?.id === sessionId) activeSession.value.modelPresetId = step.id
-          return true
-        }
-        // A failed second write must not leave an apparently selected preset.
-        if (changesModel && previous.model) {
-          const restored = await switchSessionModel(previous.model, previous.provider, sessionId, previous.apiMode)
-          if (restored) {
-            session.baseUrl = previous.baseUrl
-            session.apiKey = previous.apiKey
-            await setSessionReasoningEffort(sessionId, previous.reasoning || '')
-            setSessionFastMode(sessionId, previous.fastMode === true)
-          }
-        }
-        return false
-      } catch (error) {
-        console.error('Failed to select composer step:', error)
-        return false
-      } finally {
-        const next = new Set(modelPresetSwitching.value)
-        next.delete(sessionId)
-        modelPresetSwitching.value = next
-        modelPresetWrites.delete(sessionId)
-      }
-    })()
-    modelPresetWrites.set(sessionId, write)
-    return write
-  }
 
   async function deleteSession(sessionId: string): Promise<boolean> {
     const target = sessions.value.find(s => s.id === sessionId)
@@ -3751,7 +3684,8 @@ export const useChatStore = defineStore('chat', () => {
 
     // Capture session ID at send time — all callbacks use this, not activeSessionId
     const sid = activeSessionId.value!
-    if (modelPresetWrites.has(sid) && !await modelPresetWrites.get(sid)) return
+    const presetWrite = sessionModelPresets.pendingWrite(sid)
+    if (presetWrite && !await presetWrite) return
     if (generation !== runtimeGeneration) return
     const submittedSession = sessions.value.find(entry => entry.id === sid) || (activeSession.value?.id === sid ? activeSession.value : null)
     if (!submittedSession) return
@@ -3937,7 +3871,7 @@ export const useChatStore = defineStore('chat', () => {
         // agents both consume this when the selected provider/API supports it.
         // Global coding-agent mode uses the user's native CLI config, so avoid
         // injecting a per-session override there.
-        reasoning_effort: isCodingAgentExecution && codingAgentMode === 'global'
+        reasoning_effort: (isCodingAgentExecution && codingAgentMode === 'global') || sendSession?.provider === 'moa'
           ? undefined
           : sendSession?.reasoningEffort || '',
         ...(submittedFastMode ? { fast_mode: true } : {}),
@@ -5735,6 +5669,7 @@ export const useChatStore = defineStore('chat', () => {
     newChat,
     newCliSession,
     switchSession,
+    invalidateSessionSelection,
     ensureSessionLoaded,
     loadOlderMessages,
     switchSessionModel,

@@ -426,7 +426,7 @@ describe('user auth tables and middleware', () => {
 
     await auth.requireUserJwt(ctx, next)
 
-    expect(ctx.state.user).toEqual({ id: user.id, username: 'admin', role: 'super_admin' })
+    expect(ctx.state.user).toEqual({ id: user.id, username: 'admin', role: 'super_admin', status: 'active' })
     expect(next).toHaveBeenCalledOnce()
   })
 

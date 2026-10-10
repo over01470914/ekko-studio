@@ -520,6 +520,7 @@ describe('Group Chat member/agent identity sync', () => {
         apiMode: '',
         reasoningEffort: '',
         agentPreset: undefined,
+        ownerMemberId: '',
       },
     )
     expect(removeRoomAgent).toHaveBeenCalledWith('room-1', 'row-1')

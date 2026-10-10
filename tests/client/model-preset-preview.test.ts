@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
-import { nextTick } from 'vue'
+import { nextTick, reactive } from 'vue'
 import ModelPresetPreview from '@/components/hermes/chat/ModelPresetPreview.vue'
 import { useChatStore } from '@/stores/hermes/chat'
 import { useAppStore } from '@/stores/hermes/app'
@@ -11,6 +11,10 @@ import { useModelPresetsStore } from '@/stores/hermes/model-presets'
 import type { ModelPreset } from '@/types/model-presets'
 
 const error = vi.hoisted(() => vi.fn())
+const route = reactive({ fullPath: '/hermes/session/session' })
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(), useRoute: () => route,
+}))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('naive-ui', () => ({
   NTooltip: { template: '<div><slot name="trigger" /><slot /></div>' },
@@ -64,6 +68,17 @@ async function closeOutside() {
   await flushPromises()
 }
 describe('Composer preview panel', () => {
+  it('discards a preview on navigation even when the active session is unchanged', async () => {
+    const { wrapper, chat } = setup()
+    await openPreview(wrapper)
+    await wrapper.get('.composer-step-slider').setValue('1')
+    route.fullPath = '/hermes/chat'
+    await nextTick()
+    expect(chat.activeSessionId).toBe('session')
+    expect(wrapper.find('.composer-model-bar').exists()).toBe(false)
+    expect(chat.applyModelPreset).not.toHaveBeenCalled()
+    route.fullPath = '/hermes/session/session'
+  })
   it('discards a preview if model controls become disabled before close', async () => {
     const { wrapper, chat } = setup()
     await openPreview(wrapper)

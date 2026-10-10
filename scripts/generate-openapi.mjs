@@ -1539,6 +1539,29 @@ hostAccessPut.responses['400'] = { description: 'hostAccessEnabled must be a str
 hostAccessPut.responses['404'] = { description: 'Room or Agent not found' }
 hostAccessPut.responses['409'] = { description: 'Remote connector, explicitly foreign-owned Agent, or concurrent room/Agent update' }
 hostAccessPut.responses['503'] = { description: 'Revocation persisted but interruption could not be confirmed; verify the Agent is idle' }
+// Account-owned workspace shortcuts. No local-storage import or profile dimension.
+const workspaceDirectorySchema = { type: 'object', required: ['path', 'isFavorite', 'lastUsed', 'useCount', 'createdAt', 'updatedAt'], properties: {
+  path: { type: 'string' }, isFavorite: { type: 'boolean' },
+  ...Object.fromEntries(['lastUsed', 'useCount', 'createdAt', 'updatedAt'].map(key => [key, { type: 'integer', minimum: 0 }])),
+} }
+const workspaceDirectoryResponse = { type: 'object', required: ['directories'], properties: {
+  directories: { type: 'array', items: workspaceDirectorySchema },
+} }
+const workspaceDirectoriesPath = openapi.paths['/api/studio/workspace/directories']
+for (const [method, operation] of Object.entries(workspaceDirectoriesPath)) {
+  operation.operationId = { get: 'listWorkspaceDirectories', post: 'recordWorkspaceDirectory', patch: 'setWorkspaceDirectoryFavorite' }[method]
+  operation.description = 'Directory history and favorites for the authenticated Studio account, shared by Studio and App across Profiles. System-generated workspaces are excluded. Timestamps are Unix milliseconds.'
+  operation.responses['200'] = { description: 'Account directory shortcuts', content: { 'application/json': { schema: workspaceDirectoryResponse } } }
+  operation.responses['401'] = { description: 'Authenticated account required' }
+  if (method === 'get') continue
+  operation.requestBody = { required: true, content: { 'application/json': { schema: {
+    type: 'object', required: method === 'patch' ? ['path', 'favorite'] : ['path'], properties: {
+      path: { type: 'string', minLength: 1, maxLength: 4096 },
+      ...(method === 'patch' ? { favorite: { type: 'boolean' } } : {}),
+    },
+  } } } }
+  operation.responses['400'] = { description: 'Invalid directory path or favorite value' }
+}
 
 // Write output
 const outputPath = join(rootDir, 'docs/openapi.json')

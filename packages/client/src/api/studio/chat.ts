@@ -948,6 +948,7 @@ export function resumeSession(
   onResumed: (data: ResumeSessionPayload) => void,
   profile?: string | null,
   transport: ChatRunTransport = 'chat-run',
+  onCancelled?: () => void,
 ): Socket {
   const sharedSocket = connectChatRun(profile, transport)
   const requested = resumedSessionsBySocket.get(sharedSocket) || new Set<string>()
@@ -963,6 +964,7 @@ export function resumeSession(
     timeout: 15_000,
   }) : sharedSocket
   let finished = false
+  let received = false
   const cleanup = () => {
     if (finished) return
     finished = true
@@ -971,9 +973,11 @@ export function resumeSession(
     removeSocketListener(socket, 'disconnect', cleanup)
     pendingResumeRequests.delete(cleanup)
     if (isolated) socket.disconnect()
+    if (!received) onCancelled?.()
   }
   const handleResumed = (data: ResumeSessionPayload) => {
     if (finished || data?.session_id !== sessionId) return
+    received = true
     cleanup()
     onResumed(data)
   }

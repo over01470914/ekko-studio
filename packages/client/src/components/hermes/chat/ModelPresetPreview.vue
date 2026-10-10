@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { toRef } from 'vue'
+import { toRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import ModelPresetBar from './ModelPresetBar.vue'
@@ -8,10 +9,12 @@ const props = withDefaults(defineProps<{ modelDisabled?: boolean }>(), { modelDi
 const emit = defineEmits<{ manage: [] }>()
 const { t } = useI18n()
 const message = useMessage()
+const route = useRoute()
 const state = useModelPresetPreview(toRef(props, 'modelDisabled'), result => message.error(t(
   result === 'fast-failed' ? 'composer.fastUnavailable' : result === 'stale' ? 'composer.presetChanged' : 'composer.switchFailed',
 )))
 const { anchor, open, busy, committing, presets, defaultPresetId, preview, previewFast, issues, supportsFast, loading, loadFailed, isStreaming } = state
+watch(() => route?.fullPath, () => { void state.closePanel(false) }, { flush: 'sync' })
 async function manage() { await state.closePanel(); emit('manage') }
 </script>
 <template>

@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/stores/hermes/app', () => ({ useAppStore: () => mocks.app }))
 vi.mock('@/stores/hermes/profiles', () => ({ useProfilesStore: () => profileState }))
 vi.mock('@/stores/hermes/settings', () => ({ useSettingsStore: () => mocks.settings }))
-vi.mock('@/stores/hermes/chat', () => ({ useChatStore: () => mocks.chat }))
+const invalidateSessionSelection = vi.fn()
+vi.mock('@/stores/hermes/chat', () => ({ useChatStore: () => Object.assign(mocks.chat, { invalidateSessionSelection }) }))
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ replace: mocks.replace }) }))
 vi.mock('@/components/common/PageLoading.vue', () => ({ default: { name: 'PageLoading', props: ['show'], template: '<div><slot /></div>' } }))
 vi.mock('@/components/hermes/chat/ChatPanel.vue', () => ({ default: { name: 'ChatPanel', template: '<div data-chat-panel />' } }))
@@ -45,6 +46,17 @@ describe('ChatView initialization boundaries', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
   afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.useRealTimers(); vi.restoreAllMocks() })
+  it('preserves the active new session when its first send updates the route', async () => {
+    render(); await flushPromises()
+    mocks.chat.activeSessionId = 'new-session'
+    mocks.chat.sessions = [{ id: 'new-session' }]
+    mocks.chat.switchSession.mockClear()
+    mocks.chat.loadSessions.mockClear()
+    route.params = { sessionId: 'new-session' }
+    await flushPromises()
+    expect(mocks.chat.switchSession).not.toHaveBeenCalled()
+    expect(mocks.chat.loadSessions).not.toHaveBeenCalled()
+  })
   it('reveals chat while models and settings remain pending', async () => {
     mocks.app.loadModels.mockReturnValue(new Promise(() => {}))
     mocks.settings.fetchSettings.mockReturnValue(new Promise(() => {}))
@@ -80,7 +92,7 @@ describe('ChatView initialization boundaries', () => {
     expect(view.get('[role="alert"]').text()).toContain('common.chatLoadingTimeout')
     expect(view.getComponent({ name: 'PageLoading' }).props('show')).toBe(false)
     // r3 deliberately changed the old destructive deadline into a warning.
-    expect(mocks.chat.switchSession).not.toHaveBeenCalledWith('')
+    expect(invalidateSessionSelection).not.toHaveBeenCalled()
     mocks.chat.isLoadingSessions = false
     mocks.chat.sessionsLoaded = true
     pending.resolve(); await flushPromises()
@@ -113,6 +125,7 @@ describe('ChatView initialization boundaries', () => {
     route.query = { profile: 'other' }
     mocks.profiles.switchProfile.mockImplementation(() => { profileState.activeProfileName = 'other'; return new Promise(() => {}) })
     const view = render(); await flushPromises()
+    expect(mocks.profiles.switchProfile).toHaveBeenCalledExactlyOnceWith('other')
     expect(mocks.chat.setSessionProfileFilter).toHaveBeenCalledWith('other')
     expect(mocks.chat.loadSessions).toHaveBeenCalledOnce()
     expect(view.getComponent({ name: 'PageLoading' }).props('show')).toBe(false)
@@ -152,7 +165,7 @@ describe('ChatView initialization boundaries', () => {
     const { shouldCommit } = mocks.settings.fetchSettings.mock.calls[0][0]
     wrapper!.unmount(); wrapper = undefined
     expect(shouldCommit()).toBe(false)
-    expect(mocks.chat.switchSession).toHaveBeenCalledWith('')
+    expect(invalidateSessionSelection).toHaveBeenCalled()
     pending.resolve(); await flushPromises()
     expect(mocks.chat.loadSessions).not.toHaveBeenCalled()
   })

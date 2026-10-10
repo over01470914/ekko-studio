@@ -986,6 +986,10 @@ describe('group chat agent workspace bridge runs', () => {
         ownerMemberId: 'auth:42',
       }]),
     }
+    Object.assign(storage, {
+      getRoomAgentByAgentId: vi.fn((_roomId: string, agentId: string) => storage.getRoomAgents().find(agent => agent.agentId === agentId) || null),
+      getMessage: vi.fn(() => null),
+    })
     ;(clients as any).rooms.set('room-secure', new Map([[client.agentId, client]]))
     clients.setStorage(storage)
 
