@@ -3,10 +3,12 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve, relative, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { builtinModules } from 'node:module'
 
 export const upstream = '942bb78fa2e3722fe14e6778b0ff21d50662fa27'
 const moduleRoots = [
   'packages/client/src/modules/studio-extensions/service-center/',
+  'packages/client/src/modules/studio-extensions/personal-agent/',
   'packages/server/src/modules/studio/extensions/service-center/',
   'packages/server/src/modules/studio/extensions/personal-agent/',
   'packages/personal-assistant/',
@@ -29,23 +31,36 @@ const shared = new Set([
   'scripts/personal-agent-native.mjs',
   'scripts/personal-agent-fd-probe.mjs',
   'scripts/personal-lab-module-off-smoke.py',
+  'packages/server/src/bootstrap/personal-gateway.ts',
+  'packages/client/src/bootstrap/personal-entry.ts',
+  'packages/client/src/bootstrap/extension-entry.ts',
+  'packages/client/src/bootstrap/extension-events.ts',
+  'packages/desktop/src/main/personal-entry.ts',
+  'packages/desktop/src/main/personal-lab-identity.ts',
+  'packages/desktop/src/preload/personal.ts',
+  'personal.html',
+  'scripts/personal-lab-build.mjs',
+  'scripts/personal-lab-playwright.config.mjs',
 ])
 const tests = /^(tests\/(client\/(service-center|studio-extension-registry|i18n-coverage)\.test\.ts|server\/(service-center|service-center-health|studio-extension-registry|studio-extension-openapi|studio-extension-boundary)\.test\.ts|e2e\/(service-center|service-center-live|fixtures)\.(spec\.)?ts|helpers\/service-center-preview\.ts))$/
 export function allowedChangedPath(path) {
   return moduleRoots.some(root => path.startsWith(root)) || path.startsWith('docs/service-center/') ||
     path.startsWith('docs/personal-agent/') || /^tests\/personal-assistant\/[a-z-]+\.test\.ts$/.test(path) ||
-    /^tests\/server\/personal-agent[a-z-]*\.test\.ts$/.test(path) || shared.has(path) || tests.test(path)
+    /^tests\/(server|client)\/personal-agent[a-z-]*\.test\.ts$/.test(path) ||
+    /^tests\/desktop\/personal-lab[a-z-]*\.test\.ts$/.test(path) ||
+    /^tests\/e2e\/personal-agent[a-z-]*\.spec\.ts$/.test(path) || shared.has(path) || tests.test(path)
 }
 export function moduleImportViolations(path, source) {
   const root = moduleRoots.find(item => path.startsWith(item))
   if (!root) return []
   const imports = [...source.matchAll(/(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)['"]([^'"`]+)['"]/g)]
   return imports.map(match => match[1]).filter(specifier => {
+    if (root.startsWith('packages/client/') && (specifier.startsWith('node:') || builtinModules.includes(specifier))) return true
     if (specifier.startsWith('@/') || specifier.startsWith('modules/')) return true
     if (!specifier.startsWith('.')) return false
     const target = relative('.', resolve(dirname(path), specifier))
     const registry = `${dirname(root.slice(0, -1))}/registry`
-    const personalPublic = root.endsWith('/personal-agent/') && target === 'packages/personal-assistant/src'
+    const personalPublic = root === 'packages/server/src/modules/studio/extensions/personal-agent/' && target === 'packages/personal-assistant/src'
     return !target.startsWith(root) && target !== registry && !personalPublic
   }).map(specifier => `${path}: forbidden import ${specifier}`)
 }

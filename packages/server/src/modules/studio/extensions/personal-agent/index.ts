@@ -6,6 +6,6 @@ export function personalAgentExtension(host: PersonalAgentHost): ServerExtension
   return { id: 'personal-agent', version: '0.1.0', contractVersion: 1, apiBase: '/api/studio/personal-agent',
     capabilities: ['workspace-files'], initialize() {
       const service = host.createService()
-      return { routes: createPersonalAgentRoutes(host, service), dispose: () => service?.close() }
+      return { routes: createPersonalAgentRoutes(host, service), dispose: () => { service?.close(); host.central?.close() } }
     } }
 }

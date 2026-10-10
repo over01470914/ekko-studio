@@ -18694,6 +18694,415 @@
         }
       }
     },
+    "/api/studio/personal-agent/central/connection": {
+      "post": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Create connection",
+        "description": "Explicit approved-origin password login, then public account/profile/session verification before persisting a private central-only credential. Never forwards the local instance bearer.",
+        "operationId": "connectPersonalCentral",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified central authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "409": {
+            "description": "Expected revision/receipt conflict or unknown mutation state"
+          },
+          "502": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalCentralConnectionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/central/events": {
+      "get": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Get events",
+        "description": "Observer-only SSE; Last-Event-ID or nonnegative after cursor resumes the bounded gateway event buffer. Reconnect sends only public resume, never run/abort/file mutation. Closing SSE detaches only the observer.",
+        "operationId": "observePersonalCentralEvents",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Allowlisted target-bound central stream, with monotonically increasing gateway event IDs",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "502": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/studio/personal-agent/central/history": {
+      "get": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Get history",
+        "description": "Canonical central session.user_id string ownership and profile must match. Returns a safe bounded projection without workspace/config. Client task mapping is metadata, not a central session field.",
+        "operationId": "getPersonalCentralHistory",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest 200 messages from the verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "502": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/central/run": {
+      "post": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Run run",
+        "description": "Explicit user submission to the authenticated existing session through the public chat-run namespace. No offline queue/retry or implicit session creation; acceptance is not completion.",
+        "operationId": "submitPersonalCentralRun",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submission accepted on a connected transport, not a completed model reply",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralSubmission"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "409": {
+            "description": "Expected revision/receipt conflict or unknown mutation state"
+          },
+          "502": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalCentralRunInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/studio/personal-agent/central/state": {
+      "get": {
+        "tags": [
+          "Personal Agent"
+        ],
+        "summary": "Get state",
+        "description": "Origin-scoped central account/profile/session verification. Unknown owner fails closed. No local principal inference.",
+        "operationId": "getPersonalCentralState",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authenticated authority or honest unconfigured/unavailable state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown device/workspace/target (fail closed)"
+          },
+          "502": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Fail-closed central request/authentication/identity/transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalCentralError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/studio/personal-agent/delete-confirmations": {
       "post": {
         "tags": [
@@ -27382,6 +27791,328 @@
           "code": {
             "type": "string",
             "maxLength": 64
+          }
+        }
+      },
+      "PersonalCentralIdentifier": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "maxLength": 128,
+        "minLength": 1
+      },
+      "PersonalCentralError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "error"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      },
+      "PersonalCentralState": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "configured",
+              "connected"
+            ],
+            "properties": {
+              "version": {
+                "const": 1
+              },
+              "configured": {
+                "const": false
+              },
+              "connected": {
+                "const": false
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "configured",
+              "connected",
+              "error"
+            ],
+            "properties": {
+              "version": {
+                "const": 1
+              },
+              "configured": {
+                "const": true
+              },
+              "connected": {
+                "const": false
+              },
+              "error": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "configured",
+              "connected",
+              "origin",
+              "principal",
+              "profile",
+              "sessionId"
+            ],
+            "properties": {
+              "version": {
+                "const": 1
+              },
+              "configured": {
+                "const": true
+              },
+              "connected": {
+                "const": true
+              },
+              "origin": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "principal": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "username"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                }
+              },
+              "profile": {
+                "$ref": "#/components/schemas/PersonalCentralIdentifier"
+              },
+              "sessionId": {
+                "$ref": "#/components/schemas/PersonalCentralIdentifier"
+              },
+              "clientTaskId": {
+                "$ref": "#/components/schemas/PersonalCentralIdentifier"
+              }
+            }
+          }
+        ]
+      },
+      "PersonalCentralConnectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "origin",
+          "username",
+          "password",
+          "profile",
+          "sessionId"
+        ],
+        "properties": {
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "writeOnly": true
+          },
+          "profile": {
+            "$ref": "#/components/schemas/PersonalCentralIdentifier"
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/PersonalCentralIdentifier"
+          },
+          "taskId": {
+            "$ref": "#/components/schemas/PersonalCentralIdentifier"
+          }
+        }
+      },
+      "PersonalCentralRunInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32768
+          }
+        }
+      },
+      "PersonalCentralSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "accepted",
+          "sessionId"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "accepted": {
+            "const": true
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/PersonalCentralIdentifier"
+          }
+        }
+      },
+      "PersonalCentralHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "profile",
+              "title",
+              "messages"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/PersonalCentralIdentifier"
+              },
+              "profile": {
+                "$ref": "#/components/schemas/PersonalCentralIdentifier"
+              },
+              "title": {
+                "type": "string"
+              },
+              "messages": {
+                "type": "array",
+                "maxItems": 200,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "role",
+                    "content"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ]
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "PersonalCentralEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "event",
+          "sessionId",
+          "data"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "event": {
+            "enum": [
+              "run.started",
+              "message.delta",
+              "message.interim",
+              "run.completed",
+              "run.failed",
+              "run.queued",
+              "usage.updated",
+              "connection.failed"
+            ]
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/PersonalCentralIdentifier"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "delta": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              },
+              "run_id": {
+                "type": "string"
+              },
+              "queue_id": {
+                "type": "string"
+              },
+              "code": {
+                "enum": [
+                  "CENTRAL_IDENTITY",
+                  "CENTRAL_UNAVAILABLE",
+                  "CENTRAL_RUN_FAILED"
+                ]
+              }
+            }
           }
         }
       },

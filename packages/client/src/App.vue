@@ -403,16 +403,16 @@ useKeyboard();
             "
           />
           <DefaultCredentialPrompt
-            v-if="!isDesktopPetRoute && !isStandaloneChatPage"
+            v-if="!isDesktopPetRoute && !isStandaloneChatPage && !route.meta.clientOnly"
           />
           <ProviderConfigurationPrompt
-            v-if="!isDesktopPetRoute && !isStandaloneChatPage"
+            v-if="!isDesktopPetRoute && !isStandaloneChatPage && !route.meta.clientOnly"
           />
           <GlobalPendingActions
             v-if="!isLoginPage && !isDesktopPetRoute && !isStandaloneChatPage"
           />
           <RuntimeRestartPrompt
-            v-if="!isLoginPage && !isDesktopPetRoute && !isStandaloneChatPage && isStoredSuperAdmin()"
+            v-if="!isLoginPage && !isDesktopPetRoute && !isStandaloneChatPage && !route.meta.clientOnly && isStoredSuperAdmin()"
           />
           <StudioAnnouncementPrompt
             v-if="!isLoginPage && !isInviteOnlyPage && !isDesktopPetRoute && !isStandaloneChatPage"

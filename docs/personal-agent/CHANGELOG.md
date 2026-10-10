@@ -1,5 +1,13 @@
 # Personal Agent changelog
 
+## PA02 / gateway projection v1 / module 0.1.0 / Personal Lab 0.7.31-personal.1 — 2026-10-10
+
+- Added a client-only trusted native entry and peripheral macOS arm64 package build. It composes an authenticated loopback gateway, native folder chooser and PA01 file receiver, without normal Desktop/server runtime imports, model/provider setup, Agent/Bridge ownership or updater. Normal package identity/entry remains 0.7.31; Lab identity, lock, home and channel are separate.
+- Added personal module UI, first-use chooser/saved preference, later workbench/personal switching, explicit device/workspace target, real file operations and hash-bound delete/restore/revoke. Kept explicit deep links and disabled/missing/incompatible-module core behavior. Module-local messages cover all 11 Studio locales.
+- Added origin-bound central login/state/history/submission/event projection. Canonical ownership is the actual session `user_id` string, with repository-normalized legacy storage covered by isolated real-repository DTO tests. Unknown owner/profile/session fails closed. Task mapping is `clientTaskId` metadata, not a fabricated central field. Resume/detach/close never replay or abort work.
+- Extended canonical OpenAPI and exact source-boundary allowlist for the approved new native/bootstrap/test seams, while still rejecting unrelated core paths and renderer Node/file-engine imports. Retained the accepted PA01 file schema/native ABI/database.
+- Scoped 62/62 unit/contract tests, root build/typecheck and Personal Lab native packaging pass. Actual native UI execution, receipt/artifact hashes and remaining gates are recorded in PA02-RECEIPT.md; this changelog is not QA approval. Live central, physical Windows/cross-host and signing/notarization remain unverified and no production cutover is authorized.
+
 ## PA01 / QA-07 / public package artifact — 2026-10-08
 
 - Emit the already-declared `packages/personal-assistant/dist/index.cjs` main/default export and its source map alongside the existing native ABI 2 companion; retain the standalone node/MCP build. No manifest/version, wire, dependency, native safety or authorization change.

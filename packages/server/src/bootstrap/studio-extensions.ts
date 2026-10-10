@@ -7,6 +7,7 @@ import { serviceCenterExtension } from '../modules/studio/extensions/service-cen
 import { createServerExtensionRegistry } from '../modules/studio/extensions/registry'
 import { personalAgentExtension } from '../modules/studio/extensions/personal-agent'
 import { loadPersonalAgentService } from '../modules/studio/extensions/personal-agent/service'
+import { PersonalCentralStore } from '../modules/studio/extensions/personal-agent/central-store'
 
 // This is the only adapter allowed to read private Studio account/config state.
 export function studioExtensions() {
@@ -32,6 +33,7 @@ export function studioExtensions() {
       return user?.status === 'active' ? String(user.id) : null
     },
     createService: () => loadPersonalAgentService(join(config.appHome, 'personal-agent')),
+    central: new PersonalCentralStore(join(config.appHome, 'personal-agent', 'central')),
   })
   const enabled = [
     ...(process.env.STUDIO_SERVICE_CENTER_ENABLED === '1' ? ['service-center'] : []),

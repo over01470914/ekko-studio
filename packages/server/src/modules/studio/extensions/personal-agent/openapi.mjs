@@ -10,6 +10,9 @@ export function extendPersonalAgentOpenApi(openapi) {
   const component = (name, def) => { openapi.components.schemas[name] = embed(def) }
   // Every canonical definition in the single source-of-truth schema is exported as a named component.
   for (const [name, definition] of Object.entries(protocol.$defs)) component(`Personal${name}`, definition)
+  const central = JSON.parse(readFileSync(new URL('./central.schema.json', import.meta.url), 'utf8'))
+  for (const [name, definition] of Object.entries(central.$defs)) openapi.components.schemas[`PersonalCentral${name}`] = JSON.parse(JSON.stringify(definition).replaceAll('#/$defs/', '#/components/schemas/PersonalCentral'))
+  const centralRef = name => ({ $ref: `#/components/schemas/PersonalCentral${name}` })
   const ref = name => ({ $ref: `#/components/schemas/Personal${name}` })
 
   component('PersonalError', protocol.$defs.Error)
@@ -29,6 +32,11 @@ export function extendPersonalAgentOpenApi(openapi) {
       body({ $ref: '#/components/schemas/PersonalConfirmationRequest' }), response('Single-use, expiring confirmation bound to the exact file hash and payload', ref('ConfirmationResult'))] },
     '/restore': { post: ['restorePersonalAgentDelete', 'Active verified Studio account owner only; restores one receipted soft delete to containment-checked private trash.',
       body({ $ref: '#/components/schemas/PersonalRestoreRequest' }), response('Full target-bound restore envelope, readback hash or explicit unknown state', { $ref: '#/components/schemas/PersonalResponse' })] },
+    '/central/state': { get: ['getPersonalCentralState', 'Origin-scoped central account/profile/session verification. Unknown owner fails closed. No local principal inference.', null, response('Authenticated authority or honest unconfigured/unavailable state', centralRef('State'))] },
+    '/central/connection': { post: ['connectPersonalCentral', 'Explicit approved-origin password login, then public account/profile/session verification before persisting a private central-only credential. Never forwards the local instance bearer.', body(centralRef('ConnectionRequest')), response('Verified central authority', centralRef('State'))] },
+    '/central/history': { get: ['getPersonalCentralHistory', 'Canonical central session.user_id string ownership and profile must match. Returns a safe bounded projection without workspace/config. Client task mapping is metadata, not a central session field.', null, response('Latest 200 messages from the verified session', centralRef('History'))] },
+    '/central/run': { post: ['submitPersonalCentralRun', 'Explicit user submission to the authenticated existing session through the public chat-run namespace. No offline queue/retry or implicit session creation; acceptance is not completion.', body(centralRef('RunInput')), response('Submission accepted on a connected transport, not a completed model reply', centralRef('Submission'))] },
+    '/central/events': { get: ['observePersonalCentralEvents', 'Observer-only SSE; Last-Event-ID or nonnegative after cursor resumes the bounded gateway event buffer. Reconnect sends only public resume, never run/abort/file mutation. Closing SSE detaches only the observer.', null, { description: 'Allowlisted target-bound central stream, with monotonically increasing gateway event IDs', content: { 'text/event-stream': { schema: centralRef('Event') } } }] },
   }
   for (const [suffix, methods] of Object.entries(paths)) {
     const path = `/api/studio/personal-agent${suffix}`
@@ -44,6 +52,10 @@ export function extendPersonalAgentOpenApi(openapi) {
       operation.responses['403'] = { description: 'Active verified account or exact grant/capability required' }
       operation.responses['404'] = { description: 'Unknown device/workspace/target (fail closed)' }
       if (['put', 'post'].includes(method)) operation.responses['409'] = { description: 'Expected revision/receipt conflict or unknown mutation state' }
+      if (suffix.startsWith('/central/')) {
+        for (const status of ['400', '403', '502', '503']) operation.responses[status] = response('Fail-closed central request/authentication/identity/transport error', centralRef('Error'))
+        if (suffix === '/central/events') operation.parameters = [{ name: 'Last-Event-ID', in: 'header', schema: { type: 'integer', minimum: 0 } }, { name: 'after', in: 'query', schema: { type: 'integer', minimum: 0 } }]
+      }
     }
   }
 }

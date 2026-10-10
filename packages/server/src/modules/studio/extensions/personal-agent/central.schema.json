@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Personal gateway central projection v1",
+  "x-module-version": "0.1.0",
+  "$defs": {
+    "Identifier": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$", "maxLength": 128, "minLength": 1 },
+    "Error": { "type": "object", "additionalProperties": false, "required": ["version", "error"], "properties": { "version": { "const": 1 }, "error": { "type": "object", "additionalProperties": false, "required": ["code"], "properties": { "code": { "type": "string", "maxLength": 128 } } } } },
+    "State": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["version", "configured", "connected"], "properties": { "version": { "const": 1 }, "configured": { "const": false }, "connected": { "const": false } } },
+        { "type": "object", "additionalProperties": false, "required": ["version", "configured", "connected", "error"], "properties": { "version": { "const": 1 }, "configured": { "const": true }, "connected": { "const": false }, "error": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["version", "configured", "connected", "origin", "principal", "profile", "sessionId"], "properties": { "version": { "const": 1 }, "configured": { "const": true }, "connected": { "const": true }, "origin": { "type": "string", "maxLength": 256 }, "principal": { "type": "object", "additionalProperties": false, "required": ["id", "username"], "properties": { "id": { "type": "integer", "minimum": 1 }, "username": { "type": "string" } } }, "profile": { "$ref": "#/$defs/Identifier" }, "sessionId": { "$ref": "#/$defs/Identifier" }, "clientTaskId": { "$ref": "#/$defs/Identifier" } } }
+      ]
+    },
+    "ConnectionRequest": { "type": "object", "additionalProperties": false, "required": ["origin", "username", "password", "profile", "sessionId"], "properties": { "origin": { "type": "string", "minLength": 1, "maxLength": 256 }, "username": { "type": "string", "minLength": 1, "maxLength": 256 }, "password": { "type": "string", "minLength": 1, "maxLength": 256, "writeOnly": true }, "profile": { "$ref": "#/$defs/Identifier" }, "sessionId": { "$ref": "#/$defs/Identifier" }, "taskId": { "$ref": "#/$defs/Identifier" } } },
+    "RunInput": { "type": "object", "additionalProperties": false, "required": ["input"], "properties": { "input": { "type": "string", "minLength": 1, "maxLength": 32768 } } },
+    "Submission": { "type": "object", "additionalProperties": false, "required": ["version", "accepted", "sessionId"], "properties": { "version": { "const": 1 }, "accepted": { "const": true }, "sessionId": { "$ref": "#/$defs/Identifier" } } },
+    "History": { "type": "object", "additionalProperties": false, "required": ["session"], "properties": { "session": { "type": "object", "additionalProperties": false, "required": ["id", "profile", "title", "messages"], "properties": { "id": { "$ref": "#/$defs/Identifier" }, "profile": { "$ref": "#/$defs/Identifier" }, "title": { "type": "string" }, "messages": { "type": "array", "maxItems": 200, "items": { "type": "object", "additionalProperties": false, "required": ["id", "role", "content"], "properties": { "id": { "type": ["integer", "string"] }, "role": { "type": "string" }, "content": { "type": "string" } } } } } } } },
+    "Event": { "type": "object", "additionalProperties": false, "required": ["sequence", "event", "sessionId", "data"], "properties": { "sequence": { "type": "integer", "minimum": 1 }, "event": { "enum": ["run.started", "message.delta", "message.interim", "run.completed", "run.failed", "run.queued", "usage.updated", "connection.failed"] }, "sessionId": { "$ref": "#/$defs/Identifier" }, "data": { "type": "object", "additionalProperties": false, "properties": { "delta": { "type": "string" }, "text": { "type": "string" }, "output": { "type": "string" }, "run_id": { "type": "string" }, "queue_id": { "type": "string" }, "code": { "enum": ["CENTRAL_IDENTITY", "CENTRAL_UNAVAILABLE", "CENTRAL_RUN_FAILED"] } } } } }
+  }
+}
