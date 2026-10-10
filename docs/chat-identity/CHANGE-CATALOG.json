@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "project": { "id": "p_91802335", "slug": "ekko-chat-identity" },
+  "change_id": "CI01",
+  "revision": "r1",
+  "app_version": "0.7.31",
+  "date": "2026-10-10",
+  "timezone": "Asia/Taipei (UTC+08:00)",
+  "specification_card": "t_9c42371f",
+  "implementation_card": "t_0b720970",
+  "status": "implemented_independent_review_pending",
+  "provenance": {
+    "source_investigation": "Local read_file/search_files; no execution or independent QA on specification card",
+    "supplied_by": "default/Naya native intake and operator comments",
+    "workspace": "/Users/garbagod/projects/ekko-studio-chat-identity",
+    "branch_supplied": "fix/chat-author-identity",
+    "base_sha_supplied": "299e20cf25cce5b62115bcf245aef80cbb16af4d",
+    "upstream_sha_supplied": "46ae5f6fc78bc98be68d4e11fc850538aa030d53",
+    "fresh_git_verification": "2026-10-10: branch fix/chat-author-identity at base 299e20cf; fetched upstream/main 46ae5f6f; only upstream overlap among touched existing files is tests/e2e/fixtures.ts",
+    "deployment_baseline_card": "t_4126b91f",
+    "deployment_baseline_status": "triage_NO_GO_readback_r1b_build3_exit1_missing_isolated_input"
+  },
+  "contracts_unchanged": [
+    "GET /api/auth/me: authenticated user envelope",
+    "GET/PUT /api/auth/avatar: existing account avatar contract, no state writes by this task",
+    "GET /api/hermes/profiles and persona avatar contracts",
+    "session/message persistence, API and schemas",
+    "profile-based session access and session-share permissions",
+    "room sender/member and guest identity",
+    "coding runtime brands and subagent behavior",
+    "existing MessageItem human identity prop names",
+    "existing onAuthInvalidated architecture",
+    "package and lock version 0.7.31"
+  ],
+  "decisions": [
+    { "id": "D1", "decision": "Reactive account display only for individually proven current-generation local inputs; unknown historical/peer/shared/guest rows remain neutral or explicitly identified. No viewer/profile-as-author inference. Client-only bounded ephemeral provenance through existing synchronous sendMessage seam must be proven; block if a hot chat-store edit is necessary." },
+    { "id": "D2", "decision": "No assistant-persona remapping in human fix; retain Hermes/Ekko/coding/subagent runtime branding and live/history fallback." },
+    { "id": "D3", "decision": "Reuse account store and auth invalidation with generation-safe response/pending/reset/retry/disposal behavior and reactive local-edit protection." },
+    { "id": "R1", "decision": "No rollout until independent quality-engineer acceptance and trustworthy CI00 deployed-composite baseline; latest live dirty model-presets source must not be bundled." }
+  ],
+  "changed_paths": [
+    { "path": "docs/chat-identity/SPEC.md", "change": "new r1 root cause, complete consumer matrix, design, scope and exact evidence gates", "phase": "specification" },
+    { "path": "docs/chat-identity/CHANGE-CATALOG.json", "change": "new structured r1 catalog updated with implementation checks and pending independent review", "phase": "specification_and_implementation" },
+    { "path": "docs/chat-identity/CHANGELOG.md", "change": "new provenance-aware change and native task ledger; engineer execution entry", "phase": "specification_and_implementation" },
+    { "path": "packages/client/src/stores/account.ts", "change": "generation-safe account loading, local edit revisions and disposal cleanup", "phase": "implementation" },
+    { "path": "packages/client/src/composables/useChatAuthorIdentity.ts", "change": "bounded ephemeral action-scoped message ID provenance for local sends", "phase": "implementation" },
+    { "path": "packages/client/src/components/hermes/chat/MessageList.vue", "change": "resolve human props only for locally proven input; retain assistant runtime", "phase": "implementation" },
+    { "path": "tests/client/account-store.test.ts", "change": "controlled deferred auth generation, retry, edit and disposal cases", "phase": "implementation" },
+    { "path": "tests/client/chat-author-identity.test.ts", "change": "new/resumed/queued local action publication and neutral peer/history/source cases", "phase": "implementation" },
+    { "path": "tests/client/message-list-scroll-position.test.ts", "change": "replace persona-as-human assertion with neutral unknown author boundary", "phase": "implementation" },
+    { "path": "tests/e2e/fixtures.ts", "change": "isolated account/persona fixture options; HTTP and socket mocks unchanged elsewhere", "phase": "implementation" },
+    { "path": "tests/e2e/chat-author-identity.spec.ts", "change": "new desktop/mobile mock browser DOM and screenshot checks", "phase": "implementation" }
+  ],
+  "verification": [
+    { "gate": "source_and_consumer_mapping", "status": "pass", "evidence": "Read/search references in SPEC; not runtime tests or independent QA" },
+    { "gate": "profile_discovery", "status": "pass", "evidence": "Actual software-engineer and quality-engineer profile.yaml discovered and respective ROLE.md read" },
+    { "gate": "docs_file_writes", "status": "pass", "evidence": "write_file verified on-disk writes; JSON syntax check only, no harness claimed" },
+    { "gate": "git_tracking_and_live_hash_guards", "status": "fail", "evidence": "Isolated branch/base verified and 6232/6423 stayed alive; first post-edit read found zero of 76 hash mismatches, but final read found 11 locale hash mismatches (ar,de,en,es,fr,ja,ko,pt,ru,zh-TW,zh) and live status 98 entries. Concurrent live changes are not attributed to this isolated writer; Naya must reconcile before rollout. See engineering-report.json live_guard." },
+    { "gate": "red_green_and_account_races", "status": "pass", "evidence": "RED exit1 expected default received Researcher before production edit; GREEN existing-focused/new-focused plus auth-transport-unit exit0; command-receipts.json and red-receipt.txt in engineer scratch" },
+    { "gate": "desktop_mobile_dom_and_screenshots", "status": "pass", "evidence": "MOCK FIXTURE Chromium desktop/mobile own, unavailable, peer, history and account edits: 10 passed; success screenshots under engineer scratch/playwright-r1; not live authenticated proof" },
+    { "gate": "typecheck_clientbuild_harness", "status": "pass", "evidence": "vue-tsc exit 0; harness:check exit 0; isolated Vite client build exit 0, chunk-size warning; exact receipts in engineer scratch" },
+    { "gate": "fresh_upstream_patch_merge", "status": "pass", "evidence": "Fresh upstream/main 46ae5f6f; only touched-existing overlap tests/e2e/fixtures.ts. Scratch GIT_INDEX_FILE read-tree then git apply --check --cached / apply --cached / apply --3way --cached and diff --check all exit0; no unmerged entries. Final patch hash and simulated tree in engineer report." },
+    { "gate": "independent_qa", "status": "not_tested", "evidence": "quality-engineer same-card request_review on t_0b720970; no duplicate review child" },
+    { "gate": "deployment_baseline", "status": "blocked", "evidence": "Readback t_4126b91f in triage: r1b third isolated build exit1 due missing tracked config/agents.json in frozen copy; no equivalent current-live artifact proof. Naya owns a separate scope decision; engineering build is not a substitute." },
+    { "gate": "live_authenticated_browser", "status": "not_tested", "evidence": "Naya reports missing matching saved identifier and save_login prompt_unavailable; no credential guessing" }
+  ],
+  "known_gaps": [
+    "Implementation checks are not an independent QA verdict or deployment; same-card review remains pending.",
+    "Canonical client messages do not supply per-message account authorship; no-schema fallback may show one's own old inputs neutrally after provenance loss or reload.",
+    "Historical own inputs after full reload lose ephemeral proof; preloaded shared or peer rows never infer the viewer.",
+    "Docs and new source/tests remain untracked until explicitly committed by rollout owner; no commit/staging/push performed here.",
+    "CI00 t_4126b91f is triaged NO-GO on blocked baseline reproduction; Naya must separately authorize correction/provenance before rollout, and engineering build is not deployed-composite equivalent.",
+    "Live authenticated browser acceptance unverified; fixture screenshots cannot replace it.",
+    "Current upstream conflict simulation cannot guarantee future zero conflicts.",
+    "Existing sidebar account browser test has a hardcoded older app-version expectation; record real baseline failure without unrelated churn."
+  ]
+}

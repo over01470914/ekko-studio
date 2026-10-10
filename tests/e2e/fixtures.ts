@@ -46,6 +46,10 @@ interface MockThemePayload {
 }
 
 interface MockHermesApiOptions {
+  accountUsername?: string
+  accountAvatar?: string
+  accountUnavailable?: boolean
+  researchPersonaAvatar?: { type: 'generated' | 'image'; seed?: string; dataUrl?: string }
   tokenValidationStatus?: number
   initialProfileName?: 'default' | 'research'
   sessions?: unknown[]
@@ -352,10 +356,14 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
     }
 
     if (pathname === '/api/auth/me') {
+      if (options.accountUnavailable) {
+        await route.fulfill(jsonResponse({ error: 'Offline fixture' }, 503))
+        return
+      }
       await route.fulfill(jsonResponse({
         user: {
           id: 1,
-          username: 'playwright',
+          username: options.accountUsername ?? 'playwright',
           role: 'super_admin',
           status: 'active',
           created_at: 0,
@@ -369,7 +377,9 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
 
     if (pathname === '/api/auth/avatar') {
       if (request.method() === 'GET') {
-        await route.fulfill(jsonResponse({ avatar: '' }))
+        await route.fulfill(options.accountUnavailable
+          ? jsonResponse({ error: 'Offline fixture' }, 503)
+          : jsonResponse({ avatar: options.accountAvatar ?? '' }))
         return
       }
       if (request.method() === 'PUT') {
@@ -757,7 +767,7 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       await route.fulfill(jsonResponse({
         profiles: [
           { name: 'default', active: activeProfileName === 'default', model: 'test-model', gateway: 'test', alias: 'Default' },
-          { name: 'research', active: activeProfileName === 'research', model: 'test-model', gateway: 'test', alias: 'Research' },
+          { name: 'research', active: activeProfileName === 'research', model: 'test-model', gateway: 'test', alias: 'Research', avatar: options.researchPersonaAvatar },
         ],
       }))
       return

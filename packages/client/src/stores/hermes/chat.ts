@@ -1349,6 +1349,11 @@ export const useChatStore = defineStore('chat', () => {
   /** Authoritative live delegation counts, never inferred from transcript history. */
   const backgroundPendingBySession = ref<Map<string, number>>(new Map())
   let runtimeGeneration = 0
+  const localMessageListeners = new Set<(sessionId: string, messageId: string) => void>()
+  function onLocalUserMessage(listener: (sessionId: string, messageId: string) => void) {
+    localMessageListeners.add(listener)
+    return () => { localMessageListeners.delete(listener) }
+  }
   const backgroundObservers = new Map<string, () => void>()
 
   function clearBackgroundObservers() {
@@ -1366,6 +1371,7 @@ export const useChatStore = defineStore('chat', () => {
 
   onScopeDispose(() => {
     unsubscribeAuthInvalidation()
+    localMessageListeners.clear()
     runtimeGeneration += 1
     clearBackgroundObservers()
   })
@@ -3739,6 +3745,7 @@ export const useChatStore = defineStore('chat', () => {
       systemType: isSessionSlashCommand ? 'command' : undefined,
     }
 
+    for (const listener of localMessageListeners) listener(sid, userMsg.id)
     if (shouldQueue) {
       enqueueUserMessage(sid, userMsg)
     } else {
@@ -5629,6 +5636,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     sessions,
+    onLocalUserMessage,
     runtimeMode,
     activeSessionId,
     activeSession,

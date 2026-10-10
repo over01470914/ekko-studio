@@ -359,7 +359,7 @@ describe('MessageList session scroll position', () => {
     expect(wrapper.getComponent({ name: 'MessageItem' }).props('assistantAgent')).toEqual({ label, src })
   })
 
-  it('passes the active session profile identity to user message bubbles', async () => {
+  it('does not present a session persona as the author of an unproven user message', async () => {
     const chatStore = useChatStore()
     const profilesStore = useProfilesStore()
     const avatar = { type: 'generated' as const, seed: 'research-avatar' }
@@ -380,8 +380,17 @@ describe('MessageList session scroll position', () => {
     await flushSessionScroll()
 
     const messageItem = wrapper.getComponent({ name: 'MessageItem' })
-    expect(messageItem.props('userProfileName')).toBe('Researcher')
-    expect(messageItem.props('userProfileAvatar')).toEqual(avatar)
+    expect(messageItem.props('userProfileName')).toBe('default')
+    expect(messageItem.props('userProfileAvatar')).toBeNull()
+    profilesStore.profiles[1].alias = 'Changed Persona'
+    profilesStore.activeProfileName = 'research'
+    await nextTick()
+    expect(messageItem.props('userProfileName')).toBe('default')
+    expect(messageItem.props('userProfileAvatar')).toBeNull()
+    session.profile = undefined
+    await nextTick()
+    expect(messageItem.props('userProfileName')).toBe('default')
+    expect(messageItem.props('userProfileAvatar')).toBeNull()
   })
 
   it('shows a history link instead of loading more after the live chat message cap', async () => {

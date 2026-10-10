@@ -23,7 +23,7 @@ import ToolRunCard from "./ToolRunCard.vue";
 import MessageQueueFloatPanel from "./MessageQueueFloatPanel.vue";
 import PendingInteractionCountdown from "./PendingInteractionCountdown.vue";
 import { LIVE_CHAT_MAX_LOADED_MESSAGES, parseMessageReference, useChatStore, type Message } from "@/stores/hermes/chat";
-import { useProfilesStore } from "@/stores/hermes/profiles";
+import { useChatAuthorIdentity } from "@/composables/useChatAuthorIdentity";
 import { useToolTraceVisibility } from "@/composables/useToolTraceVisibility";
 import { openSubagentStream, subagentIdFromToolCall } from "@/utils/hermes/subagent-stream";
 import { messageScrollPositionKey, rememberMessageScrollPosition } from "./message-scroll-position";
@@ -40,7 +40,7 @@ const props = withDefaults(defineProps<{
 })
 
 const chatStore = useChatStore();
-const profilesStore = useProfilesStore();
+const { account, isLocalAuthor } = useChatAuthorIdentity();
 const { t } = useI18n();
 const { toolTraceVisible } = useToolTraceVisibility();
 const listRef = ref<InstanceType<typeof VirtualMessageList> | null>(null);
@@ -184,16 +184,9 @@ const liveReasoningDetail = computed<{
 });
 
 const assistantAgent = computed(() => chatSessionAgentAvatar(chatStore.activeSession));
-const activeSessionProfileName = computed(() => (
-  chatStore.activeSession?.profile || profilesStore.activeProfileName || "default"
-));
-const activeSessionProfile = computed(() => (
-  profilesStore.profiles.find(profile => profile.name === activeSessionProfileName.value) || null
-));
-const userProfileName = computed(() => (
-  activeSessionProfile.value?.alias?.trim() || activeSessionProfileName.value
-));
-const userProfileAvatar = computed(() => activeSessionProfile.value?.avatar || null);
+function localAuthor(message: Message): boolean {
+  return isLocalAuthor(chatStore.activeSessionId || undefined, message);
+}
 
 const emptyState = computed(() => {
   const agent = assistantAgent.value;
@@ -719,8 +712,8 @@ defineExpose({
           v-else
           :message="msg"
           :assistant-agent="assistantAgent"
-          :user-profile-name="userProfileName"
-          :user-profile-avatar="userProfileAvatar"
+          :user-profile-name="localAuthor(msg) ? account.username || 'default' : 'default'"
+          :user-profile-avatar="localAuthor(msg) && account.username.trim() ? account.profileAvatar : null"
           :highlight="chatStore.focusMessageId === msg.id"
           :show-fork-action="canForkActiveSession && msg.id === lastForkActionMessageId"
         />
