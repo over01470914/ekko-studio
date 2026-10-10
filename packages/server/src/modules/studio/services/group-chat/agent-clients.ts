@@ -567,18 +567,38 @@ export class AgentClient implements GroupAgentExecutor {
             return this.eventSink.sendMessage(roomId, content, messageId, messageExtra, agentSessionId)
         }
         return new Promise((resolve, reject) => {
-            this.socket!.emit('message', {
+            const socket = this.socket!
+            let settled = false
+            const settle = (run: () => void) => {
+                if (settled) return
+                settled = true
+                socket.off('disconnect', onDisconnect)
+                clearTimeout(timer)
+                run()
+            }
+            const onDisconnect = () => settle(() => reject(new Error('Agent disconnected before the room message was acknowledged')))
+            const timer = setTimeout(
+                () => settle(() => reject(new Error(`Timed out waiting for room message acknowledgement (${MESSAGE_ACK_TIMEOUT_MS}ms)`))),
+                MESSAGE_ACK_TIMEOUT_MS,
+            )
+            timer.unref?.()
+            socket.once('disconnect', onDisconnect)
+            socket.emit('message', {
                 roomId,
                 content,
                 id: messageId,
                 ...messageExtra,
                 ...(agentSessionId ? { agentSessionId } : {}),
             }, (res: { id?: string; error?: string }) => {
-                if (res.error) {
-                    reject(new Error(res.error))
-                } else {
-                    resolve(res.id!)
-                }
+                settle(() => {
+                    if (res?.error) {
+                        reject(new Error(res.error))
+                    } else if (typeof res?.id !== 'string' || !res.id.trim()) {
+                        reject(new Error('Invalid room message acknowledgement'))
+                    } else {
+                        resolve(res.id)
+                    }
+                })
             })
         })
     }
@@ -2167,6 +2187,7 @@ function safeId(value: string): string {
 }
 
 const TOOL_RESULT_ACK_TIMEOUT_MS = 30_000
+const MESSAGE_ACK_TIMEOUT_MS = 60_000
 const TOOL_RESULT_FINAL_RETRY_ATTEMPTS = 2
 const TOOL_RESULT_RETRY_DELAY_MS = 50
 const ACKNOWLEDGED_TOOL_CALL_LIMIT = 1_024
