@@ -24,6 +24,13 @@ const updateMessageContextTokenUsageMock = vi.fn((sid: string, state: any, emit:
 const compressorCompressMock = vi.fn()
 const readConfigYamlForProfileMock = vi.fn()
 const compressorConstructorMock = vi.fn()
+const saveCompressionSnapshotMock = vi.fn()
+const summaryRequestMock = vi.fn()
+
+vi.mock('../../packages/server/src/modules/studio/public/chat-agent-runtime', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../packages/server/src/modules/studio/public/chat-agent-runtime')>(),
+  createPrimaryAgentBridge: vi.fn(() => ({ request: summaryRequestMock, destroy: vi.fn().mockResolvedValue(undefined) })),
+}))
 
 vi.mock('../../packages/server/src/modules/studio/repositories/session-store', () => ({
   getSessionDetail: getSessionDetailMock,
@@ -34,6 +41,7 @@ vi.mock('../../packages/server/src/modules/studio/repositories/session-store', (
 
 vi.mock('../../packages/server/src/modules/studio/repositories/compression-snapshot', () => ({
   getCompressionSnapshot: getCompressionSnapshotMock,
+  saveCompressionSnapshot: saveCompressionSnapshotMock,
 }))
 
 vi.mock('../../packages/server/src/modules/studio/repositories/usage-store', () => ({
@@ -98,6 +106,8 @@ describe('run chat compression trigger', () => {
     compressorCompressMock.mockReset()
     compressorConstructorMock.mockReset()
     readConfigYamlForProfileMock.mockReset()
+    saveCompressionSnapshotMock.mockReset()
+    summaryRequestMock.mockReset()
 
     getSessionMock.mockReturnValue({ id: 'session-1', profile: 'default', history_revision: 0 })
     getSessionContextMessagesMock.mockImplementation((_sessionId: string, options: { afterId?: number; throughId?: number } = {}) => {
@@ -176,6 +186,146 @@ describe('run chat compression trigger', () => {
     const { forceCompressBridgeHistory } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
     await forceCompressBridgeHistory('session-1', 'default', [], undefined, { provider: 'unknown', model: 'shared', upstream: 'https://relay.test/v1', force: true, excludeLastUser: false, allowHermesFallback: false })
     expect(compressorConstructorMock.mock.calls[0][0].config).toEqual({ triggerTokens: 125_000, summaryBudget: 50_000, headMessageCount: 2, tailMessageCount: 7 })
+  })
+
+  function storedMessages(count = 10) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: index + 1,
+      session_id: 'session-1',
+      role: index === count - 1 || index % 2 === 0 ? 'user' : 'assistant',
+      content: `message ${index}`,
+      timestamp: index + 1,
+    }))
+  }
+
+  it.each([
+    { cap: 10_000, tokens: 10_000, compress: false },
+    { cap: 10_000, tokens: 10_001, compress: true },
+    { cap: 200_000, tokens: 128_000, compress: false },
+    { cap: 200_000, tokens: 128_001, compress: true },
+    { cap: null, tokens: 20_000, compress: false },
+    { cap: undefined, tokens: 20_000, compress: false },
+    { cap: null, tokens: 128_001, compress: true },
+    { cap: undefined, tokens: 128_001, compress: true },
+    { cap: 200_000, tokens: 127_999, compress: false, contextLength: 255_999 },
+    { cap: 200_000, tokens: 128_000, compress: true, contextLength: 255_999 },
+  ])('uses min(ratio, cap) only as the soft trigger: %j', async ({ cap, tokens, compress, contextLength = 256_000 }) => {
+    getModelContextLengthMock.mockReturnValue(contextLength)
+    getSessionDetailMock.mockReturnValue({ messages: storedMessages() })
+    readConfigYamlForProfileMock.mockResolvedValue({ compression: { threshold_tokens: cap } })
+    calcAndUpdateUsageMock.mockResolvedValue({ inputTokens: tokens, outputTokens: 0 })
+    compressorCompressMock.mockImplementation(async (messages) => ({ messages, meta: {} }))
+    const { buildCompressedHistory } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
+
+    const history = await buildCompressedHistory('session-1', 'default', '', undefined, vi.fn(), new Map())
+
+    expect(history).toHaveLength(9)
+    expect(compressorCompressMock).toHaveBeenCalledTimes(compress ? 1 : 0)
+    if (compress) {
+      expect(compressorCompressMock.mock.calls[0][4]).toMatchObject({
+        overBudget: tokens > Math.floor(contextLength * 0.5),
+      })
+      expect(compressorConstructorMock).toHaveBeenCalledWith({ config: {
+        triggerTokens: Math.floor(contextLength * 0.5), summaryBudget: Math.floor(contextLength * 0.2),
+        headMessageCount: 3, tailMessageCount: 20,
+      } })
+    }
+  })
+
+  it('keeps the soft trigger positive for tiny contexts', async () => {
+    getModelContextLengthMock.mockReturnValue(1)
+    getSessionDetailMock.mockReturnValue({ messages: storedMessages() })
+    readConfigYamlForProfileMock.mockResolvedValue({ compression: { threshold_tokens: 1 } })
+    calcAndUpdateUsageMock.mockResolvedValue({ inputTokens: 1, outputTokens: 0 })
+    const { buildCompressedHistory } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
+    expect(await buildCompressedHistory('session-1', 'default', '', undefined, vi.fn(), new Map())).toHaveLength(9)
+    expect(compressorCompressMock).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 1, 5])('allows fixed overhead over the cap with %i stored messages', async (count) => {
+    getSessionDetailMock.mockReturnValue({ messages: storedMessages(count) })
+    readConfigYamlForProfileMock.mockResolvedValue({ compression: { threshold_tokens: 10_000 } })
+    const { buildCompressedHistory } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
+    const history = await buildCompressedHistory(
+      'session-1', 'default', '', undefined, vi.fn(), new Map(), {}, async () => 100_000,
+    )
+    expect(history).toHaveLength(Math.max(0, count - 1))
+    expect(compressorCompressMock).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 5])('still rejects genuinely oversized fixed overhead with %i stored messages', async (count) => {
+    getSessionDetailMock.mockReturnValue({ messages: storedMessages(count) })
+    readConfigYamlForProfileMock.mockResolvedValue({ compression: { threshold_tokens: 10_000 } })
+    const { buildCompressedHistory, ContextWindowTooSmallError } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
+    await expect(buildCompressedHistory(
+      'session-1', 'default', '', undefined, vi.fn(), new Map(), {}, async () => 128_001,
+    )).rejects.toBeInstanceOf(ContextWindowTooSmallError)
+    expect(compressorCompressMock).not.toHaveBeenCalled()
+  })
+
+  it('returns unchanged history after one failed soft-cap compression attempt', async () => {
+    const messages = storedMessages()
+    const before = structuredClone(messages)
+    getSessionDetailMock.mockReturnValue({ messages })
+    readConfigYamlForProfileMock.mockResolvedValue({ compression: { threshold_tokens: 10_000 } })
+    calcAndUpdateUsageMock.mockResolvedValue({ inputTokens: 20_000, outputTokens: 0 })
+    compressorCompressMock.mockRejectedValue(new Error('unit fixture: summarizer unavailable'))
+    const { buildCompressedHistory } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
+    const history = await buildCompressedHistory('session-1', 'default', '', undefined, vi.fn(), new Map())
+    expect(history.map(message => message.content)).toEqual(messages.slice(0, -1).map(message => message.content))
+    expect(compressorCompressMock).toHaveBeenCalledTimes(1)
+    expect(messages).toEqual(before)
+    expect(saveCompressionSnapshotMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['none', 'legacy', 'cursor'])('preserves head and tool tail above soft cap using REAL compressor (snapshot=%s)', async (snapshotKind) => {
+    const snapshot = snapshotKind !== 'none'
+    const real = await vi.importActual<typeof import('../../packages/server/src/modules/studio/services/context-compressor')>(
+      '../../packages/server/src/modules/studio/services/context-compressor',
+    )
+    const messages = [
+      ...storedMessages(5).slice(0, 4),
+      { id: 5, role: 'assistant', content: 'read', tool_calls: [
+        { id: 'call-1', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+      ] },
+      { id: 6, role: 'tool', name: 'read_file', tool_name: 'read_file', tool_call_id: 'call-1', content: 'tail-token '.repeat(100) },
+      { id: 7, role: 'assistant', content: 'tail answer' },
+      { id: 8, role: 'user', content: 'current input' },
+    ]
+    const before = structuredClone(messages)
+    getSessionDetailMock.mockReturnValue({ messages })
+    readConfigYamlForProfileMock.mockResolvedValue({ compression: {
+      threshold_tokens: 100, protect_first_n: 2, protect_last_n: 3,
+    } })
+    if (snapshot) getCompressionSnapshotMock.mockReturnValue({
+      summary: 'previous summary', lastMessageIndex: 3, messageCountAtTime: 4,
+      ...(snapshotKind === 'cursor' ? {
+        compressedThroughMessageId: 4, protectedHeadThroughMessageId: 2, historyRevision: 0, updatedAt: 0,
+      } : {}),
+    })
+    summaryRequestMock.mockResolvedValue({ status: 'completed', result: { final_response: 'new summary' } })
+    compressorCompressMock.mockImplementation((...args) => {
+      const options = compressorConstructorMock.mock.calls.at(-1)![0]
+      return new real.ChatContextCompressor(options).compress(...args as Parameters<InstanceType<typeof real.ChatContextCompressor>['compress']>)
+    })
+    const { buildCompressedHistory, buildDbHistory } = await import('../../packages/server/src/modules/studio/services/chat-run/compression')
+    const originalHistory = await buildDbHistory('session-1', { excludeLastUser: true })
+
+    const history = await buildCompressedHistory('session-1', 'default', '', undefined, vi.fn(), new Map())
+
+    expect(history.slice(0, 2)).toEqual(originalHistory.slice(0, 2))
+    expect(history.slice(-3)).toEqual(originalHistory.slice(-3))
+    expect(history[2].content).toBe(`${real.SUMMARY_PREFIX}\n\n${snapshot ? 'previous summary' : 'new summary'}`)
+    const resultTokens = history.reduce((sum, message) => sum + real.countTokens(String(message.content)), 0)
+    expect(resultTokens).toBeGreaterThan(100)
+    expect(resultTokens).toBeLessThan(128_000)
+    expect(compressorConstructorMock).toHaveBeenCalledWith({ config: {
+      triggerTokens: 128_000, summaryBudget: 51_200, headMessageCount: 2, tailMessageCount: 3,
+    } })
+    expect(compressorCompressMock).toHaveBeenCalledTimes(1)
+    expect(summaryRequestMock).toHaveBeenCalledTimes(snapshot ? 0 : 1)
+    expect(saveCompressionSnapshotMock).toHaveBeenCalledTimes(snapshot ? 0 : 1)
+    expect(messages).toEqual(before)
   })
 
   it('preserves empty assistant reasoning_content in bridge history', async () => {
@@ -1163,7 +1313,7 @@ describe('run chat compression trigger', () => {
     )
   })
 
-  it('does not compress when compression is disabled', async () => {
+  it.each([undefined, 1])('does not compress when disabled with cap %s', async (cap) => {
     const messages = Array.from({ length: 10 }, (_, index) => ({
       id: index + 1,
       session_id: 'session-1',
@@ -1178,7 +1328,7 @@ describe('run chat compression trigger', () => {
     }))
     getSessionDetailMock.mockReturnValue({ messages })
     readConfigYamlForProfileMock.mockResolvedValue({
-      compression: { enabled: false, threshold: 0.01 },
+      compression: { enabled: false, threshold: 0.01, threshold_tokens: cap },
     })
     calcAndUpdateUsageMock.mockResolvedValue({ inputTokens: 180_000, outputTokens: 0 })
 

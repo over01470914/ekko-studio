@@ -25,6 +25,7 @@ import type { SessionState, BridgeCompressionResult } from './types'
 interface RunChatCompressionConfig {
   enabled: boolean
   triggerTokens: number
+  hardTriggerTokens: number
   compressor: Partial<CompressorConfig>
 }
 
@@ -179,13 +180,17 @@ async function resolveCompressionModelContext(
 }
 
 async function getRunChatCompressionConfig(profile: string, contextLength: number): Promise<RunChatCompressionConfig> {
-  const { enabled, threshold, targetRatio, protectLastN, protectFirstN } = await readCompressionPolicy(profile)
+  const { enabled, threshold, thresholdTokens, targetRatio, protectLastN, protectFirstN } = await readCompressionPolicy(profile)
+  const hardTriggerTokens = Math.floor(contextLength * threshold)
 
   return {
     enabled,
-    triggerTokens: Math.floor(contextLength * threshold),
+    triggerTokens: thresholdTokens == null
+      ? hardTriggerTokens
+      : Math.max(1, Math.min(Math.floor(contextLength), hardTriggerTokens, thresholdTokens)),
+    hardTriggerTokens,
     compressor: {
-      triggerTokens: Math.floor(contextLength * threshold),
+      triggerTokens: hardTriggerTokens,
       summaryBudget: Math.max(1_000, Math.floor(contextLength * targetRatio)),
       headMessageCount: protectFirstN,
       tailMessageCount: protectLastN,
@@ -259,6 +264,7 @@ export async function buildCompressedHistory(
     })
     const compressionConfig = await getRunChatCompressionConfig(profile, contextLength)
     const triggerTokens = compressionConfig.triggerTokens
+    const hardTriggerTokens = compressionConfig.hardTriggerTokens
     if (!compressionConfig.enabled) {
       logger.info('[context-compress] session=%s: compression disabled by config', sessionId)
       return history
@@ -306,9 +312,9 @@ export async function buildCompressedHistory(
 
     if (history.length === 0) {
       totalTokens = await estimateLocalContextTokens([], Math.max(currentRunInputTokens, messageOnlyTotalTokens))
-      if (totalTokens > triggerTokens) {
+      if (totalTokens > hardTriggerTokens) {
         throw new ContextWindowTooSmallError(
-          `Context window is too small: fixed prompt/tool overhead plus the current input uses ~${totalTokens} tokens, exceeding compression threshold ${triggerTokens}. Increase model context length, raise compression.threshold, shorten the input, or disable some tools.`,
+          `Context window is too small: fixed prompt/tool overhead plus the current input uses ~${totalTokens} tokens, exceeding compression threshold ${hardTriggerTokens}. Increase model context length, raise compression.threshold, shorten the input, or disable some tools.`,
         )
       }
       if (totalTokens > 0) emitContextUsage(totalTokens)
@@ -418,11 +424,12 @@ export async function buildCompressedHistory(
         decision: totalTokens > triggerTokens ? 'compress' : 'skip',
         snapshot: 'none',
       }, '[context-compress] threshold check')
-      if (!canCompressHistory && totalTokens > triggerTokens) {
+      if (!canCompressHistory && totalTokens > hardTriggerTokens) {
         throw new ContextWindowTooSmallError(
-          `Context window is too small: fixed prompt/tool overhead plus ${history.length} history messages uses ~${totalTokens} tokens, exceeding compression threshold ${triggerTokens}, and there is not enough history to compress. Increase model context length, raise compression.threshold, or disable some tools.`,
+          `Context window is too small: fixed prompt/tool overhead plus ${history.length} history messages uses ~${totalTokens} tokens, exceeding compression threshold ${hardTriggerTokens}, and there is not enough history to compress. Increase model context length, raise compression.threshold, or disable some tools.`,
         )
       }
+      if (!canCompressHistory && totalTokens > triggerTokens) return history
       if (totalTokens <= triggerTokens) {
         logger.info('[context-compress] session=%s: %d messages, ~%d tokens — under threshold, skip', sessionId, history.length, totalTokens)
       } else {
@@ -478,8 +485,7 @@ export async function compressHistory(
       historyRevision: session?.history_revision ?? 0,
       workerKey: `${summarizerProfile}:compression:${sessionId}`,
       allowHermesFallback: modelContext.allowHermesFallback !== false,
-      // Only called after the caller's threshold check (which may use the provider floor) said compress.
-      overBudget: true,
+      overBudget: compressionConfig?.triggerTokens == null || totalTokens > compressionConfig.triggerTokens,
     })
     const afterTokens = await calcAndUpdateUsage(sessionId, cState, emit, {
       truncateToolResultsForContext: true,

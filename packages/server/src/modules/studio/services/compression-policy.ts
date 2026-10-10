@@ -4,6 +4,7 @@ import { logger } from '../public/logging'
 export interface CompressionPolicy {
   enabled: boolean
   threshold: number
+  thresholdTokens?: number
   targetRatio: number
   protectFirstN: number
   protectLastN: number
@@ -19,6 +20,9 @@ export function normalizeCompressionPolicy(value: unknown): CompressionPolicy {
   return {
     enabled: raw.enabled !== false,
     threshold: clamp(raw.threshold, 0.5, 0.05, 0.95),
+    ...(typeof raw.threshold_tokens === 'number' && Number.isFinite(raw.threshold_tokens)
+      && Number.isInteger(raw.threshold_tokens) && raw.threshold_tokens > 0
+      ? { thresholdTokens: raw.threshold_tokens } : {}),
     targetRatio: clamp(raw.target_ratio, 0.2, 0.01, 0.8),
     protectFirstN: Math.floor(clamp(raw.protect_first_n, 3, 0, 100)),
     protectLastN: Math.floor(clamp(raw.protect_last_n, 20, 0, 500)),
