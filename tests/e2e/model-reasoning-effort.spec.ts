@@ -9,7 +9,7 @@ for (const [name, provider, model, metadata, max] of [
 ] as const) {
   test(`chat uses ${name} from the selected model and forwards the chosen effort`, async ({ page }) => {
     await authenticate(page, TEST_ACCESS_KEY)
-    await mockHermesApi(page, { modelGroups: [{ ...TEST_MODEL_GROUP, provider, models: [model], model_meta: { [model]: metadata } }] })
+    const api = await mockHermesApi(page, { modelGroups: [{ ...TEST_MODEL_GROUP, provider, models: [model], model_meta: { [model]: metadata } }] })
     await mockChatSocket(page)
     await page.goto('/#/hermes/chat')
     const input = page.getByPlaceholder('Type a message... (Enter to send, Shift+Enter for new line)')
@@ -21,8 +21,10 @@ for (const [name, provider, model, metadata, max] of [
       const run = state.emitted.find((item: any) => item.event === 'run').payload
       state.latest.__trigger('run.completed', { event: 'run.completed', session_id: run.session_id, run_id: 'first-run', output: 'Ready' })
     })
+    await expect(page.locator('.input-model-button')).toBeVisible()
+    await expect(page.locator('.composer-model-bar')).toHaveCount(0)
     await page.locator('.reasoning-effort-button').click()
-    const slider = page.getByRole('slider')
+    const slider = page.locator('.reasoning-effort-slider-popover').getByRole('slider')
     await expect(slider).toHaveAttribute('aria-valuemax', String(max))
     if (max === 0) {
       await expect(slider).toHaveAttribute('aria-disabled', 'true')
@@ -36,6 +38,70 @@ for (const [name, provider, model, metadata, max] of [
     await page.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => page.evaluate(() => (window as any).__PW_CHAT_SOCKET__?.emitted?.filter((item: any) => item.event === 'run').length || 0)).toBe(2)
     const effort = await page.evaluate(() => (window as any).__PW_CHAT_SOCKET__.emitted.filter((item: any) => item.event === 'run')[1].payload.reasoning_effort)
-    expect(effort).toBe(max ? 'max' : undefined)
+    expect(effort).toBe(max ? 'max' : '')
+    expect(api.unexpectedRequests).toEqual([])
   })
 }
+
+
+test('empty Model Presets offers configuration only, not an effort fallback; original model and reasoning controls remain usable', async ({ page }, testInfo) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'default')
+  const sessionId = 'empty-presets-session'
+  const selectionWrites: Array<{ path: string; body: unknown }> = []
+  const api = await mockHermesApi(page, { initialProfileName: 'default', sessions: [{ id: sessionId, profile: 'default', source: 'builtin_agent',
+    agent: 'ekko-agent', agent_mode: 'scoped', model: 'test-model', provider: 'test-provider', reasoning_effort: 'low',
+    title: 'Empty presets test', started_at: 100, last_active: 101, message_count: 1 }], modelGroups: [{ ...TEST_MODEL_GROUP, models: ['test-model', 'alternate-model'],
+    available_models: ['test-model', 'alternate-model'], model_meta: {
+      'test-model': { reasoning: true, reasoning_efforts: ['low', 'high', 'max'] },
+      'alternate-model': { reasoning: true, reasoning_efforts: ['low', 'high', 'max'] },
+    } }] })
+  await mockChatSocket(page)
+  await page.route(/[/]api[/]studio[/]sessions[/][^/]+[/](?:model|reasoning-effort)(?:[?].*)?$/, async route => {
+    selectionWrites.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() })
+    await route.fulfill({ json: { success: true } })
+  })
+  await page.addInitScript(sid => {
+    ;(window as any).__PW_CHAT_SOCKET_RESUMES__ = { [sid]: { session_id: sid,
+      messages: [{ id: 1, role: 'user', content: 'Empty presets session ready', timestamp: 100 }],
+      isWorking: false, events: [], queueLength: 0 } }
+  }, sessionId)
+  await page.goto('/#/hermes/session/' + sessionId)
+  await expect(page.getByText('Empty presets session ready')).toBeVisible()
+  await expect(page.locator('.input-model-button')).toBeVisible()
+  await expect(page.locator('.reasoning-effort-button')).toBeVisible()
+  const original = await page.locator('.reasoning-effort-button').getAttribute('aria-label')
+  await page.locator('.composer-launcher').hover()
+  await expect(page.locator('.composer-model-bar')).toBeVisible()
+  await expect(page.getByTestId('preset-empty')).toBeVisible()
+  await expect(page.locator('.preset-configure')).toBeVisible()
+  await expect(page.locator('.composer-step-slider')).toHaveCount(0)
+  await expect(page.locator('.composer-step-dot')).toHaveCount(0)
+  await expect(page.locator('.reasoning-effort-slider-popover')).toHaveCount(0)
+  await expect(page.locator('.reasoning-effort-button')).toHaveAttribute('aria-label', original!)
+  await page.screenshot({ path: testInfo.outputPath('model-presets-empty-preview.png') })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.composer-model-bar')).toHaveCount(0)
+  await page.locator('.input-model-button').click()
+  await page.locator('.session-model-item').filter({ hasText: 'alternate-model' }).click()
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.locator('.input-model-label')).toContainText('alternate-model')
+  await page.locator('.reasoning-effort-button').click()
+  const slider = page.locator('.reasoning-effort-slider-popover').getByRole('slider')
+  await expect(slider).toHaveAttribute('aria-valuemax', '3')
+  await slider.focus()
+  await expect(slider).toHaveAttribute('aria-valuenow', '0')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.locator('.reasoning-effort-button')).toHaveAttribute('aria-label', /max/i)
+  await page.getByPlaceholder('Type a message... (Enter to send, Shift+Enter for new line)').click()
+  await page.locator('.composer-launcher').hover()
+  await expect(page.locator('.composer-step-slider')).toHaveCount(0)
+  await expect(page.locator('.composer-model-name')).toHaveText('alternate-model')
+  await expect(page.locator('.composer-effort-name')).toHaveText(/max/i)
+  await page.keyboard.press('Escape')
+  await expect.poll(() => selectionWrites.length).toBe(4)
+  expect(selectionWrites[0]).toEqual({ path: '/api/studio/sessions/' + sessionId + '/model', body: { model: 'alternate-model', provider: 'test-provider', apiMode: 'chat_completions' } })
+  expect(selectionWrites.at(-1)).toEqual({ path: '/api/studio/sessions/' + sessionId + '/reasoning-effort', body: { reasoningEffort: 'max' } })
+  expect(api.unexpectedRequests).toEqual([])
+})

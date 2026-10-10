@@ -118,6 +118,7 @@ export interface RoomAgent {
     connectionStatus?: 'online' | 'offline'
     ownerMemberId?: string
     connectorId?: string
+    hostAccessEnabled?: number
     historical?: boolean
 }
 
@@ -504,6 +505,14 @@ export async function updateAgent(roomId: string, agentId: string, data: RoomAge
 
 export async function listAgents(roomId: string): Promise<{ agents: RoomAgent[] }> {
     return request(`/api/studio/group-chat/rooms/${roomId}/agents`)
+}
+
+export async function updateRoomAgentHostAccess(roomId: string, agentId: string, hostAccessEnabled: boolean): Promise<{ agent: RoomAgent; agents: RoomAgent[] }> {
+    return request(`/api/studio/group-chat/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(agentId)}/host-access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostAccessEnabled }),
+    })
 }
 
 export async function removeAgent(roomId: string, agentId: string): Promise<{ success: boolean; agents: RoomAgent[]; members: MemberInfo[] }> {

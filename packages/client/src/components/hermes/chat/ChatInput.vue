@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ModelPresetPreview from './ModelPresetPreview.vue'
+import { useRouter } from 'vue-router'
 import { modelReasoningEfforts } from '@/utils/model-reasoning-effort'
 import { isBuiltinEkkoSession, isExternalCodingAgentSession } from '@/utils/hermes/session-agent'
 import { EKKO_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
@@ -24,6 +26,7 @@ import { normalizeComposerVoiceTranscript, useComposerVoiceInput } from '@/compo
 import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-frame-extraction'
 import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
 
+const router = useRouter()
 const chatStore = useChatStore()
 const appStore = useAppStore()
 const profilesStore = useProfilesStore()
@@ -92,7 +95,7 @@ const reasoningEffortLabel = computed<string>(() => {
 })
 function onReasoningEffortChange(value: string | null | undefined) {
   const sid = chatStore.activeSessionId
-  if (!sid) return
+  if (!sid || chatStore.isApplyingModelPreset) return
   chatStore.setSessionReasoningEffort(sid, value || '')
 }
 watch([reasoningEffortOptions, currentReasoningEffort], ([options]) => {
@@ -111,7 +114,7 @@ function onReasoningEffortSliderChange(value: number | [number, number]) {
 }
 
 function handleModelButtonClick() {
-  if (props.modelDisabled) return
+  if (props.modelDisabled || chatStore.isApplyingModelPreset) return
   emit('modelClick')
 }
 
@@ -964,6 +967,7 @@ defineExpose({ addFiles, focusComposer })
 // --- Send ---
 
 async function handleSend() {
+  if (chatStore.isApplyingModelPreset) return
   if (isPreparingAttachments.value) {
     if (sendAwaitingAttachments) return
     sendAwaitingAttachments = true
@@ -1259,6 +1263,7 @@ function openAttachmentPreview(attachment: Attachment) {
                     quaternary
                     size="tiny"
                     class="reasoning-effort-button"
+                    :disabled="chatStore.isApplyingModelPreset"
                     :class="{ active: !!currentReasoningEffort }"
                     :style="reasoningEffortAccentStyle"
                     :aria-label="`${t('chat.reasoningEffort.tooltip')}: ${reasoningEffortLabel}`"
@@ -1288,7 +1293,7 @@ function openAttachmentPreview(attachment: Attachment) {
                 :value="reasoningEffortSliderValue"
                 :min="0"
                 :max="reasoningEffortOptions.length - 1"
-                :disabled="reasoningEffortOptions.length <= 1"
+                :disabled="reasoningEffortOptions.length <= 1 || chatStore.isApplyingModelPreset"
                 :step="1"
                 :format-tooltip="reasoningEffortSliderLabel"
                 @update:value="onReasoningEffortSliderChange"
@@ -1337,7 +1342,7 @@ function openAttachmentPreview(attachment: Attachment) {
                 quaternary
                 size="tiny"
                 class="input-model-button"
-                :disabled="props.modelDisabled"
+                :disabled="props.modelDisabled || chatStore.isApplyingModelPreset"
                 :title="isMobileViewport ? undefined : props.modelLabel || t('models.selectModel')"
                 :aria-label="props.modelLabel || t('models.selectModel')"
                 @click="handleModelButtonClick"
@@ -1373,6 +1378,11 @@ function openAttachmentPreview(attachment: Attachment) {
 
         </div>
         <div class="input-actions">
+          <ModelPresetPreview
+            v-if="!isMoaSession && !isGlobalCodingAgentSession"
+            :model-disabled="modelDisabled"
+            @manage="router.push({ name: 'hermes.models', query: { tab: 'model-presets', modelProfile: chatStore.activeSession?.profile || profilesStore.activeProfileName || 'default' } })"
+          />
           <VoiceDialogueControls
             :status="voiceInput.dialogue.status.value"
             :transcript="voiceInput.transcript.value"
@@ -1388,7 +1398,7 @@ function openAttachmentPreview(attachment: Attachment) {
             circle
             class="send-button"
             :class="{ 'send-button--stop': sendButtonIsStop }"
-            :disabled="sendButtonIsStop ? chatStore.isAborting : !canSend"
+            :disabled="sendButtonIsStop ? chatStore.isAborting : (!canSend || chatStore.isApplyingModelPreset)"
             :aria-label="sendButtonIsStop ? 'Stop' : 'Send'"
             @click="sendButtonIsStop ? chatStore.stopStreaming() : handleSend()"
           >

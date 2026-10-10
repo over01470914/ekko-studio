@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NSelect, NTabPane, NTabs, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -16,6 +16,8 @@ import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { fetchProfiles, type HermesProfile } from '@/api/hermes/profiles'
 import { checkCopilotToken } from '@/api/hermes/copilot-auth'
+
+const ModelPresetsPanel = defineAsyncComponent(async () => (await import('@/components/hermes/models/ModelPresetsPanel.vue')).default)
 
 const { t } = useI18n()
 const modelsStore = useModelsStore()
@@ -44,9 +46,9 @@ watch(() => route.query.modelProfile, profile => {
   showModal.value = false
   void loadProvidersForProfile()
 })
-type ModelsTab = 'general' | 'auxiliary' | 'combination' | 'stt' | 'tts' | 'jev'
+type ModelsTab = 'model-presets' | 'general' | 'auxiliary' | 'combination' | 'stt' | 'tts' | 'jev'
 
-const MODELS_TABS = new Set<ModelsTab>(['general', 'auxiliary', 'combination', 'stt', 'tts', 'jev'])
+const MODELS_TABS = new Set<ModelsTab>(['general', 'model-presets', 'auxiliary', 'combination', 'stt', 'tts', 'jev'])
 const activeTab = ref<ModelsTab>('general')
 
 function normalizeTab(value: unknown): ModelsTab {
@@ -218,6 +220,14 @@ async function handleRefreshModelCache() {
         </NTabPane>
         <NTabPane name="tts" :tab="t('settings.voice.ttsProvidersTitle')">
           <VoiceSettings :key="`tts-${selectedProfile}`" kind="tts" />
+        </NTabPane>
+        <NTabPane name="model-presets" :tab="t('composer.modelPresetsTitle')">
+          <ModelPresetsPanel
+            v-if="activeTab === 'model-presets'"
+            :profile="selectedProfile"
+            :groups="modelsStore.providersProfile === selectedProfile ? modelsStore.providers : []"
+            :providers-loading="modelsStore.loading"
+          />
         </NTabPane>
       </NTabs>
     </div>

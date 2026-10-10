@@ -261,6 +261,7 @@ interface RoomAgent {
     invited: number
     executorType: 'server' | 'remote'
     ownerMemberId: string
+    hostAccessEnabled: number
     connectorId: string
     remoteOrigin: string
 }
@@ -414,6 +415,7 @@ const ROOM_AGENT_SELECT_COLUMNS = [
     'invited',
     'executorType',
     'ownerMemberId',
+    'hostAccessEnabled',
     'connectorId',
     'remoteOrigin',
 ].join(', ')
@@ -2675,7 +2677,7 @@ class ChatStorage {
         return {
             id, roomId, agentId, agent, agentMode, priorAgentMode, profile, provider, model, apiMode,
             reasoningEffort, agentPreset, name, description, avatar, invited,
-            executorType, ownerMemberId, connectorId, remoteOrigin,
+            executorType, ownerMemberId, connectorId, remoteOrigin, hostAccessEnabled: 0,
         }
     }
 
@@ -2738,11 +2740,28 @@ class ChatStorage {
         const reasoningEffort = agentMode === 'global' ? '' : String(metadata.reasoningEffort || '').trim()
         const agentPreset = typeof metadata.agentPreset === 'string' ? metadata.agentPreset.trim() : ''
         const avatar = String(metadata.avatar || '').trim()
+        const sameRuntime = existing.executorType === 'server'
+            && existing.agent === agent && existing.agentMode === agentMode && existing.profile === profile
+            && existing.provider === provider && existing.model === model && existing.apiMode === apiMode
+            && existing.reasoningEffort === reasoningEffort && existing.agentPreset === agentPreset
         this.db()?.prepare(
             `UPDATE gc_room_agents
-             SET agent = ?, agentMode = ?, priorAgentMode = ?, profile = ?, provider = ?, model = ?, apiMode = ?, reasoningEffort = ?, agentPreset = ?, name = ?, description = ?, avatar = ?
+             SET agent = ?, agentMode = ?, priorAgentMode = ?, profile = ?, provider = ?, model = ?, apiMode = ?, reasoningEffort = ?, agentPreset = ?, name = ?, description = ?, avatar = ?, hostAccessEnabled = CASE WHEN ? THEN hostAccessEnabled ELSE 0 END
              WHERE roomId = ? AND removedAt = 0 AND (id = ? OR agentId = ?)`
-        ).run(agent, agentMode, priorAgentMode, profile, provider, model, apiMode, reasoningEffort, agentPreset, name, description, avatar, roomId, agentRef, agentRef)
+        ).run(agent, agentMode, priorAgentMode, profile, provider, model, apiMode, reasoningEffort, agentPreset, name, description, avatar, sameRuntime ? 1 : 0, roomId, agentRef, agentRef)
+        return this.getRoomAgent(roomId, agentRef)
+    }
+
+    setRoomAgentHostAccess(roomId: string, agentRef: string, enabled: boolean, ownerMemberId: string): RoomAgent | null {
+        const result = this.db()?.prepare(
+            `UPDATE gc_room_agents SET hostAccessEnabled = ?,
+                ownerMemberId = CASE WHEN ownerMemberId = '' THEN ? ELSE ownerMemberId END
+             WHERE roomId = ? AND removedAt = 0 AND executorType = 'server'
+               AND connectorId = '' AND remoteOrigin = ''
+               AND (ownerMemberId = '' OR ownerMemberId = ?)
+               AND (id = ? OR agentId = ?)`,
+        ).run(enabled ? 1 : 0, ownerMemberId, roomId, ownerMemberId, agentRef, agentRef)
+        if (!result?.changes) return null
         return this.getRoomAgent(roomId, agentRef)
     }
 
@@ -2753,7 +2772,7 @@ class ChatStorage {
     ): RoomAgent | null {
         this.db()?.prepare(
             `UPDATE gc_room_agents
-             SET executorType = 'remote', connectorId = ?, remoteOrigin = ?
+             SET executorType = 'remote', hostAccessEnabled = 0, connectorId = ?, remoteOrigin = ?
              WHERE roomId = ? AND removedAt = 0 AND (id = ? OR agentId = ?)`,
         ).run(metadata.connectorId, metadata.remoteOrigin, roomId, agentRef, agentRef)
         return this.getRoomAgent(roomId, agentRef)
@@ -2778,7 +2797,7 @@ class ChatStorage {
         ).run(agent.id, roomId, agent.id, agent.agentId, agent.name)
         db.prepare(
             `UPDATE gc_room_agents
-             SET removedAt = ?, connectorId = '', remoteOrigin = ''
+             SET removedAt = ?, hostAccessEnabled = 0, connectorId = '', remoteOrigin = ''
              WHERE roomId = ? AND removedAt = 0 AND id = ?`
         ).run(Date.now(), roomId, agent.id)
     }

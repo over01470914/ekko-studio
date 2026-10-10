@@ -226,6 +226,34 @@ describe('ekko-agent context usage events', () => {
     completeWorkspaceRunCheckpointMock.mockReturnValue(null)
   })
 
+  it('passes Fast separately from reasoning to the Ekko run and model defaults', async () => {
+    resolveBridgeRunModelConfigMock.mockResolvedValue({ provider: 'openai', model: 'gpt-6.1-sol' })
+    resolveEkkoProviderRuntimeConfigMock.mockResolvedValue({ provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiMode: 'codex_responses' })
+    const providerConfig = { id: 'openai', type: 'openai-compatible', defaultModel: 'gpt-6.1-sol', baseUrl: 'https://api.openai.com/v1', requestStyle: 'openai-responses' }
+    resolveModelProviderConfigsMock.mockReturnValue({ providerConfig })
+    agentRunMock.mockResolvedValueOnce({ runId: 'run-fast', output: { role: 'assistant', content: 'Done' }, steps: [], messages: [], events: [] })
+    const { handleEkkoAgentRun } = await import('../../packages/server/src/modules/studio/services/chat-run/handle-ekko-agent-run')
+    const { nsp, socket, sessionMap } = makeHarness()
+    await handleEkkoAgentRun(nsp as any, socket as any, {
+      session_id: 'session-1', input: 'Think', agent_id: 'ekko-agent', fast_mode: true, reasoning_effort: 'high',
+    }, 'default', sessionMap, vi.fn(() => false))
+    expect(agentRunMock).toHaveBeenCalledWith(expect.objectContaining({
+      fastMode: true, reasoningEffort: 'high', modelDefaults: expect.objectContaining({ fastMode: true, reasoningEffort: 'high' }),
+    }))
+    expect(providerConfig).toMatchObject({ modelMetadata: { 'gpt-6.1-sol': { fast_mode: true } } })
+  })
+
+  it.each([true, 'true'])('rejects unsupported or malformed Fast %s before reserving execution state', async fastMode => {
+    const { handleEkkoAgentRun } = await import('../../packages/server/src/modules/studio/services/chat-run/handle-ekko-agent-run')
+    const { nsp, socket, sessionMap, state } = makeHarness()
+    await expect(handleEkkoAgentRun(nsp as any, socket as any, {
+      session_id: 'session-1', input: 'Think', agent_id: 'ekko-agent', fast_mode: fastMode as boolean,
+    }, 'default', sessionMap, vi.fn(() => false))).rejects.toThrow(/Fast mode|fastMode/)
+    expect(agentRunMock).not.toHaveBeenCalled()
+    expect(state.isWorking).toBe(false)
+    expect((state as any).abortController).toBeUndefined()
+  })
+
   it('persists plan snapshots before broadcasting and records update_plan calls in chat history', async () => {
     const plan = {
       runId: 'run-plan', planId: 'run-plan', revision: 1, executionState: 'running',

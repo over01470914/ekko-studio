@@ -1521,6 +1521,25 @@ for (const operation of [usagePricingPath.get, usagePricingPath.put]) {
 }
 usagePricingPath.put.responses['400'] = { description: 'Invalid or duplicate provider/model pricing' }
 
+const hostAccessPut = openapi.paths['/api/studio/group-chat/rooms/{roomId}/agents/{agentId}/host-access'].put
+hostAccessPut.summary = 'Set host access for one local room Agent'
+hostAccessPut.description = 'Only the active authenticated room owner may set this flag for a local room Agent; managed run MCP credentials, guests, remote connectors, and explicitly foreign-owned Agents are denied. A legacy local Agent with blank owner may be attributed to the authenticated room owner when the owner configures this flag. Default off. Persisted same-owner local Agent handoffs may access task-related host files outside the workspace on subsequent turns. Credential and private-memory rules remain in force. Every disabling request persists revocation and confirms target interruption/idle, including retries while already off; if interruption cannot be confirmed the endpoint returns 503 with the flag already off and the roster updated.'
+hostAccessPut.requestBody = { required: true, content: { 'application/json': { schema: {
+  type: 'object', additionalProperties: false, required: ['hostAccessEnabled'],
+  properties: { hostAccessEnabled: { type: 'boolean' } },
+} } } }
+hostAccessPut.responses['200'] = { description: 'Updated Agent and room roster', content: { 'application/json': { schema: {
+  type: 'object', required: ['agent', 'agents'], properties: {
+    agent: { type: 'object', properties: { hostAccessEnabled: { type: 'integer', enum: [0, 1] } } },
+    agents: { type: 'array', items: { type: 'object' } },
+  },
+} } } }
+hostAccessPut.responses['403'] = { description: 'Not the authenticated room owner or a managed run credential' }
+hostAccessPut.responses['400'] = { description: 'hostAccessEnabled must be a strict boolean' }
+hostAccessPut.responses['404'] = { description: 'Room or Agent not found' }
+hostAccessPut.responses['409'] = { description: 'Remote connector, explicitly foreign-owned Agent, or concurrent room/Agent update' }
+hostAccessPut.responses['503'] = { description: 'Revocation persisted but interruption could not be confirmed; verify the Agent is idle' }
+
 // Write output
 const outputPath = join(rootDir, 'docs/openapi.json')
 writeFileSync(outputPath, JSON.stringify(openapi, null, 2))

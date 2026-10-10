@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { groupChatPublicRoutes, groupChatRoutes, setGroupChatServer } from '../../packages/server/src/modules/studio/routes/group-chat'
+import { addRoomAgent as addRoomAgentController } from '../../packages/server/src/modules/studio/controllers/group-chat'
 import {
   issueRemoteWorkspaceGrant,
   resetRemoteWorkspaceGrantsForTest,
@@ -633,6 +634,19 @@ describe('group chat REST route baseline', () => {
     expect(storage.saveRoom).toHaveBeenCalled()
   })
 
+  it('attributes a new local Agent to its authenticated active creator instead of trusting payload ownership', async () => {
+    storage.rooms.set('owned-room', { id: 'owned-room', ownerAuthUserId: 42 })
+    const ctx = {
+      params: { roomId: 'owned-room' },
+      state: { user: { id: 42, role: 'user', status: 'active', profiles: ['default'] } },
+      request: { body: { profile: 'default', name: 'Worker', ownerMemberId: 'auth:999', hostAccessEnabled: true } },
+    } as any
+    await addRoomAgentController(ctx)
+    expect(ctx.body.agent.ownerMemberId).toBe('auth:42')
+    expect(storage.addRoomAgent.mock.calls.at(-1)?.[6]).toMatchObject({ ownerMemberId: 'auth:42' })
+    expect(ctx.body.agent.hostAccessEnabled).toBeUndefined()
+  })
+
   it('persists the selected rolling-summary runtime when creating a room', async () => {
     const res = await fetch(`${baseUrl}/api/studio/group-chat/rooms`, {
       method: 'POST',
@@ -958,6 +972,7 @@ describe('group chat REST route baseline', () => {
         model: 'gpt-test',
         apiMode: 'codex_responses',
         reasoningEffort: 'high',
+        ownerMemberId: '',
         avatar: JSON.stringify({ type: 'generated', seed: 'researcher-avatar' }),
       },
     )

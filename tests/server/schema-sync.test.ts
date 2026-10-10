@@ -512,6 +512,7 @@ describe('Database Schema Synchronization', () => {
       expect(cols.has('agentId')).toBe(true)
       expect(cols.has('profile')).toBe(true)
       expect(cols.has('name')).toBe(true)
+      expect(cols.has('hostAccessEnabled')).toBe(true)
 
       // Verify primary key constraint works (unique id required)
       db.prepare(`INSERT INTO "${GC_ROOM_AGENTS_TABLE}" (id, roomId, agentId, profile, name, description, invited) VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -523,6 +524,8 @@ describe('Database Schema Synchronization', () => {
       // Verify both rows exist
       const rows = db.prepare(`SELECT COUNT(*) as count FROM "${GC_ROOM_AGENTS_TABLE}"`).get() as { count: number }
       expect(rows.count).toBe(2)
+      const flags = db.prepare(`SELECT hostAccessEnabled FROM "${GC_ROOM_AGENTS_TABLE}"`).all() as Array<{ hostAccessEnabled: number }>
+      expect(flags).toEqual([{ hostAccessEnabled: 0 }, { hostAccessEnabled: 0 }])
 
       // Verify duplicate primary key is rejected
       expect(() => {

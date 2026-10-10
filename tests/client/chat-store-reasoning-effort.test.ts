@@ -59,6 +59,8 @@ vi.mock('@/utils/completion-sound', () => ({
   playCompletionSound: vi.fn(),
 }))
 
+import { useModelPresetsStore } from '@/stores/hermes/model-presets'
+import { useAppStore } from '@/stores/hermes/app'
 import { useChatStore, type Session } from '@/stores/hermes/chat'
 
 function makeSession(id = 'session-1'): Session {
@@ -363,5 +365,110 @@ describe('chat store per-session reasoning effort', () => {
       reasoningEffort: 'max',
       pushEnabled: true,
     }))
+  })
+})
+
+
+describe('composer preset and fast mode run selection', () => {
+  const step = { id: 'deep', label: 'Deep', providerId: 'openai', modelId: 'reasoner', reasoningLevel: 'high' }
+  function setup() {
+    const app = useAppStore()
+    app.selectedProvider = 'openai'
+    app.selectedModel = 'quick'
+    app.modelGroups = [{ provider: 'openai', label: 'OpenAI', models: ['quick', 'reasoner'], base_url: 'https://api.openai.com/v1', api_key: '',
+      model_meta: { quick: { reasoning: false }, reasoner: { reasoning_efforts: ['low', 'high'], fast_mode: true } },
+    }]
+    const store = useChatStore()
+    const session = { ...makeSession('composer-session'), source: 'builtin_agent' as const, agent: 'ekko-agent' as const, provider: 'openai', model: 'quick', isLocalOnly: true }
+    store.sessions = [session]
+    store.activeSessionId = session.id
+    store.activeSession = store.sessions[0]
+    return { store, session: store.sessions[0], app }
+  }
+  beforeEach(() => {
+    vi.resetAllMocks()
+    setActivePinia(createPinia())
+    localStorage.clear()
+    sessionsApi.setSessionReasoningEffort.mockResolvedValue(true)
+    sessionsApi.setSessionModel.mockResolvedValue(true)
+    chatApi.startRunViaSocket.mockReturnValue({ abort: vi.fn() })
+  })
+  it('applies a complete preset and disables fast mode on another model', async () => {
+    const { store, session } = setup()
+    expect(await store.applyModelPreset(session.id, step)).toBe(true)
+    expect(session).toMatchObject({ model: 'reasoner', provider: 'openai', reasoningEffort: 'high' })
+    expect(store.setSessionFastMode(session.id, true)).toBe(true)
+    expect(session.reasoningEffort).toBe('high')
+    await store.switchSessionModel('quick', 'openai', session.id)
+    expect(session.fastMode).toBe(false)
+    expect(store.setSessionFastMode(session.id, true)).toBe(false)
+  })
+  it('rejects invalid models and unsupported effort without changing the session', async () => {
+    const { store, session } = setup()
+    expect(await store.applyModelPreset(session.id, { ...step, modelId: 'missing' })).toBe(false)
+    expect(await store.applyModelPreset(session.id, { ...step, reasoningLevel: 'xhigh' })).toBe(false)
+    expect(session.model).toBe('quick')
+    expect(sessionsApi.setSessionModel).not.toHaveBeenCalled()
+  })
+  it('uses the default preset for new chats but preserves explicit other model and global config', () => {
+    const { store } = setup()
+    useModelPresetsStore().hydrate('default', { composer_steps: [step], composer_default_step_id: step.id })
+    expect(store.newChat()).toMatchObject({ model: 'reasoner', reasoningEffort: 'high' })
+    expect(store.newChat({ model: 'quick', provider: 'openai' }).reasoningEffort).toBeUndefined()
+    expect(store.newChat({ model: 'reasoner', provider: 'openai' }).reasoningEffort).toBe('high')
+    expect(store.newChat({ source: 'coding_agent', codingAgentId: 'codex', codingAgentMode: 'global' }).reasoningEffort).toBeUndefined()
+  })
+  it('preserves explicit runtime credentials when the configured default does not change provider', () => {
+    const { store } = setup()
+    useModelPresetsStore().hydrate('default', { composer_steps: [step], composer_default_step_id: step.id })
+    const session = store.newChat({ source: 'coding_agent', agent: 'codex', codingAgentId: 'codex', codingAgentMode: 'scoped',
+      profile: 'default', provider: step.providerId, model: step.modelId, baseUrl: 'https://explicit.example/v1', apiKey: 'test-only-key', apiMode: 'chat_completions' })
+    expect(session).toMatchObject({ model: step.modelId, reasoningEffort: 'high', baseUrl: 'https://explicit.example/v1', apiKey: 'test-only-key' })
+  })
+  it('keeps explicit same-provider credentials when a preset default supplies reasoning', () => {
+    const { store } = setup()
+    useModelPresetsStore().hydrate('default', { composer_steps: [step], composer_default_step_id: step.id })
+    const session = store.newChat({ profile: 'default', provider: 'openai', model: 'reasoner',
+      source: 'coding_agent', codingAgentId: 'codex', codingAgentMode: 'scoped',
+      baseUrl: 'https://custom.example/v1', apiKey: 'test-only-key', apiMode: 'chat_completions' })
+    expect(session.reasoningEffort).toBe('high')
+    expect(session.baseUrl).toBe('https://custom.example/v1')
+    expect(session.apiKey).toBe('test-only-key')
+  })
+  it('restores the old model and effort if the second preset write fails', async () => {
+    const { store, session } = setup()
+    session.isLocalOnly = false
+    sessionsApi.setSessionReasoningEffort.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    expect(await store.applyModelPreset(session.id, step)).toBe(false)
+    expect(session.model).toBe('quick')
+    expect(session.reasoningEffort).toBeUndefined()
+    expect(store.isApplyingModelPreset).toBe(false)
+    expect(sessionsApi.setSessionModel.mock.calls.map(call => call[1])).toEqual(['reasoner', 'quick'])
+  })
+  it('captures the submitted model, effort and fast mode before asynchronous model loading', async () => {
+    const { store, session, app } = setup()
+    await store.applyModelPreset(session.id, step)
+    store.setSessionFastMode(session.id, true)
+    let finishLoad!: () => void
+    vi.spyOn(app, 'waitForModelsForRun').mockImplementation(() => new Promise<void>(resolve => { finishLoad = resolve }))
+    const sending = store.sendMessage('Think deeply')
+    await vi.waitFor(() => expect(finishLoad).toBeTypeOf('function'))
+    // Changing the composer while preparing a message cannot change that message.
+    await store.switchSessionModel('quick', 'openai', session.id)
+    finishLoad()
+    await sending
+    expect(chatApi.startRunViaSocket.mock.calls[0][0]).toMatchObject({ model: 'reasoner', provider: 'openai', reasoning_effort: 'high', fast_mode: true })
+    expect(session.model).toBe('quick')
+  })
+  it('never sends priority mode to a native/global or unsupported execution engine', () => {
+    const { store, session } = setup()
+    session.model = 'reasoner'
+    session.agent = 'hermes' as any
+    session.source = 'cli' as any
+    expect(store.setSessionFastMode(session.id, true)).toBe(false)
+    session.agent = 'codex' as any
+    session.source = 'coding_agent' as any
+    session.codingAgentMode = 'global'
+    expect(store.setSessionFastMode(session.id, true)).toBe(false)
   })
 })

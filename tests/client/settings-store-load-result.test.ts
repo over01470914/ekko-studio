@@ -8,6 +8,7 @@ vi.mock('@/api/hermes/config', () => ({
   updateConfigSection: vi.fn(),
 }))
 
+import { useModelPresetsStore } from '@/stores/hermes/model-presets'
 import { useSettingsStore } from '@/stores/hermes/settings'
 
 describe('settings store load result', () => {
@@ -21,6 +22,8 @@ describe('settings store load result', () => {
     const store = useSettingsStore()
     await expect(store.fetchSettings()).resolves.toBe(true)
     expect(store.display.approval_bell).toBe(true)
+    expect(configMock.fetchConfig).toHaveBeenCalledWith(undefined, { profile: 'default' })
+    expect(useModelPresetsStore().hasLoaded('default')).toBe(true)
   })
 
   it('does not commit a stale load when its generation is no longer active', async () => {

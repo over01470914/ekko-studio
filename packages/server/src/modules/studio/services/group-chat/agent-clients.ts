@@ -40,6 +40,7 @@ import {
     stripMentionRoutingTokens,
 } from './mention-routing'
 import { buildAgentInstructions, buildNonOwnerRequestSecurityPrompt } from './agent-prompt'
+import { canGrantGroupAgentHostAccess } from './host-access'
 
 export const GROUP_CHAT_AGENT_SOCKET_SECRET = randomBytes(32).toString('hex')
 
@@ -1133,6 +1134,11 @@ export class AgentClient implements GroupAgentExecutor {
                 requesterId: msg.senderId,
                 ownerMemberId: msg.targetOwnerMemberId,
                 workspaceRoot: String(room?.workspace || '').trim(),
+                hostAccessEnabled: Boolean(
+                    this.storage
+                    && msg.messageId
+                    && canGrantGroupAgentHostAccess(this.storage, roomId, this.agentId, msg.senderId, msg.messageId),
+                ),
             }))
         }
         return promptParts.join('\n\n')

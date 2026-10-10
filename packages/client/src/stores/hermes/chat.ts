@@ -1,3 +1,6 @@
+import { useModelPresetsStore } from './model-presets'
+import type { ModelPreset } from '@/types/model-presets'
+import { modelPresetIssue, modelSupportsFastMode } from '@/utils/model-presets'
 import { chatSessionAgentAvatar } from '@/utils/chat-agent-avatar'
 import { isNativeCodingAgent } from '@/utils/agent-catalog'
 import { historySessionSource, isBuiltinEkkoSession } from '@/utils/hermes/session-agent'
@@ -507,6 +510,9 @@ export interface Session {
    * Empty string / undefined = use config.yaml default.
    * Values: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' */
   reasoningEffort?: string
+  /** Local composer preference; copied into each submitted run. */
+  fastMode?: boolean
+  modelPresetId?: string
 }
 
 interface CompressionState {
@@ -1507,6 +1513,9 @@ export const useChatStore = defineStore('chat', () => {
   let switchSessionRequestSequence = 0
   const olderMessageLoads = new WeakMap<Session, object>()
   let activeSelectionSequence = 0
+  const modelPresetWrites = new Map<string, Promise<boolean>>()
+  const modelPresetSwitching = ref<Set<string>>(new Set())
+  const isApplyingModelPreset = computed(() => !!activeSessionId.value && modelPresetSwitching.value.has(activeSessionId.value))
   const reasoningEffortWriteChains = new Map<string, Promise<boolean>>()
   const reasoningEffortWriteTargets = new Map<string, string | undefined>()
   const reasoningEffortConfirmedValues = new Map<string, string | undefined>()
@@ -1788,13 +1797,13 @@ export const useChatStore = defineStore('chat', () => {
     return mapped
   }
 
-  async function loadSessions(profile?: string | null, preferredSessionId?: string | null) {
+  async function loadSessions(profile?: string | null, preferredSessionId?: string | null): Promise<boolean> {
     const requestSequence = ++loadSessionsRequestSequence
     const selectionSequence = activeSelectionSequence
     isLoadingSessions.value = true
     try {
       const list = await fetchRuntimeSessions(profile)
-      if (requestSequence !== loadSessionsRequestSequence) return
+      if (requestSequence !== loadSessionsRequestSequence) return false
       const fresh = list.map(mapHermesSession)
       const selectionChanged = selectionSequence !== activeSelectionSequence
       // Search can select a session outside the sidebar's first page. Keep
@@ -1840,7 +1849,7 @@ export const useChatStore = defineStore('chat', () => {
         activeSession.value = activeSessionId.value
           ? sessions.value.find(session => session.id === activeSessionId.value) || null
           : null
-        return
+        return false
       }
 
       // Restore route-selected session first (tab-local source of truth),
@@ -1857,14 +1866,16 @@ export const useChatStore = defineStore('chat', () => {
             ? storedId
             : sessions.value[0]?.id
       if (targetId) {
-        await switchSession(targetId, targetId === currentId ? focusMessageId.value : null)
+        return await switchSession(targetId, targetId === currentId ? focusMessageId.value : null)
       } else {
         clearActiveSession()
+        return true
       }
     } catch (err) {
       if (requestSequence === loadSessionsRequestSequence) {
         console.error('Failed to load sessions:', err)
       }
+      return false
     } finally {
       if (requestSequence === loadSessionsRequestSequence) {
         isLoadingSessions.value = false
@@ -2344,6 +2355,21 @@ export const useChatStore = defineStore('chat', () => {
       apiKey: options.apiKey,
       apiMode: options.apiMode,
     })
+    if (!isGlobalCodingAgent) {
+      const presetConfig = useModelPresetsStore().get(session.profile || useProfilesStore().activeProfileName || 'default')
+      const step = presetConfig.presets.find(entry => entry.id === presetConfig.defaultPresetId)
+      const groups = appStore.profileModelGroups.find(entry => entry.profile === session.profile)?.groups || appStore.modelGroups
+      if (step && !modelPresetIssue(step, groups) &&
+        (!options.model || options.model === step.modelId) && (!options.provider || options.provider === step.providerId)) {
+        const previousProvider = session.provider
+        session.model = step.modelId
+        session.provider = step.providerId
+        session.reasoningEffort = step.reasoningLevel || undefined
+        session.modelPresetId = step.id
+        // A default may change provider; don't retain credentials for the old one.
+        if (previousProvider !== step.providerId && (options.baseUrl || options.apiKey)) clearCodingAgentRuntimeCredentials(session)
+      }
+    }
     void switchSession(session.id)
     return session
   }
@@ -2375,6 +2401,8 @@ export const useChatStore = defineStore('chat', () => {
       target.provider = provider || ''
       target.apiMode = preservedApiMode
       target.reasoningEffort = undefined
+      target.fastMode = false
+      target.modelPresetId = undefined
       if (shouldClearRuntimeCredentials) clearCodingAgentRuntimeCredentials(target)
     }
     if (activeTarget) {
@@ -2382,9 +2410,78 @@ export const useChatStore = defineStore('chat', () => {
       activeTarget.provider = provider || ''
       activeTarget.apiMode = preservedApiMode
       activeTarget.reasoningEffort = undefined
+      activeTarget.fastMode = false
+      activeTarget.modelPresetId = undefined
       if (shouldClearRuntimeCredentials) clearCodingAgentRuntimeCredentials(activeTarget)
     }
     return true
+  }
+
+  function composerModelGroups(session: Session) {
+    const app = useAppStore()
+    return app.profileModelGroups.find(entry => entry.profile === session.profile)?.groups || app.modelGroups
+  }
+
+  function sessionSupportsFastMode(session: Session): boolean {
+    // Only Ekko's API providers implement priority inference; native CLI engines
+    // must not show a working toggle until their execution adapters support it.
+    if (!isBuiltinEkkoSession(session)) return false
+    if (session.codingAgentMode === 'global') return false
+    const app = useAppStore()
+    const groups = composerModelGroups(session)
+    const provider = session.provider || app.selectedProvider
+    const group = groups.find(entry => entry.provider === provider)
+    const apiMode = normalizeCodingAgentApiMode(session.apiMode || group?.api_mode, inferCodingAgentApiMode(provider, session.baseUrl || group?.base_url))
+    if (apiMode !== 'chat_completions' && apiMode !== 'codex_responses') return false
+    return modelSupportsFastMode(groups, provider, session.model || app.selectedModel)
+  }
+
+  function setSessionFastMode(sessionId: string, enabled: boolean): boolean {
+    const session = sessions.value.find(entry => entry.id === sessionId) || (activeSession.value?.id === sessionId ? activeSession.value : null)
+    if (!session || (enabled && !sessionSupportsFastMode(session))) return false
+    session.fastMode = enabled
+    if (activeSession.value?.id === sessionId) activeSession.value.fastMode = enabled
+    return true
+  }
+
+  async function applyModelPreset(sessionId: string, step: ModelPreset): Promise<boolean> {
+    const session = sessions.value.find(entry => entry.id === sessionId) || (activeSession.value?.id === sessionId ? activeSession.value : null)
+    if (!session || session.provider === 'moa' || session.codingAgentMode === 'global' || modelPresetIssue(step, composerModelGroups(session))) return false
+    if (modelPresetWrites.has(sessionId)) return false
+    const previous = { model: session.model, provider: session.provider, apiMode: session.apiMode, baseUrl: session.baseUrl, apiKey: session.apiKey, reasoning: session.reasoningEffort, fastMode: session.fastMode }
+    modelPresetSwitching.value = new Set(modelPresetSwitching.value).add(sessionId)
+    const write = (async () => {
+      try {
+        const changesModel = session.model !== step.modelId || session.provider !== step.providerId
+        if (changesModel && !await switchSessionModel(step.modelId, step.providerId, sessionId)) return false
+        if (await setSessionReasoningEffort(sessionId, step.reasoningLevel || '')) {
+          session.modelPresetId = step.id
+          if (activeSession.value?.id === sessionId) activeSession.value.modelPresetId = step.id
+          return true
+        }
+        // A failed second write must not leave an apparently selected preset.
+        if (changesModel && previous.model) {
+          const restored = await switchSessionModel(previous.model, previous.provider, sessionId, previous.apiMode)
+          if (restored) {
+            session.baseUrl = previous.baseUrl
+            session.apiKey = previous.apiKey
+            await setSessionReasoningEffort(sessionId, previous.reasoning || '')
+            setSessionFastMode(sessionId, previous.fastMode === true)
+          }
+        }
+        return false
+      } catch (error) {
+        console.error('Failed to select composer step:', error)
+        return false
+      } finally {
+        const next = new Set(modelPresetSwitching.value)
+        next.delete(sessionId)
+        modelPresetSwitching.value = next
+        modelPresetWrites.delete(sessionId)
+      }
+    })()
+    modelPresetWrites.set(sessionId, write)
+    return write
   }
 
   async function deleteSession(sessionId: string): Promise<boolean> {
@@ -3649,17 +3746,24 @@ export const useChatStore = defineStore('chat', () => {
     const trimmedContent = content.trim()
 
     if (!activeSession.value) {
-      const session = createSession()
-      switchSession(session.id)
+      newChat()
     }
 
     // Capture session ID at send time — all callbacks use this, not activeSessionId
     const sid = activeSessionId.value!
-    const shouldSendInitialSessionConfig = activeSession.value
-      ? activeSession.value.messageCount == null || activeSession.value.messageCount === 0
+    if (modelPresetWrites.has(sid) && !await modelPresetWrites.get(sid)) return
+    if (generation !== runtimeGeneration) return
+    const submittedSession = sessions.value.find(entry => entry.id === sid) || (activeSession.value?.id === sid ? activeSession.value : null)
+    if (!submittedSession) return
+    const sendSession = { ...submittedSession }
+    const submittedModel = sendSession.model || useAppStore().selectedModel
+    const submittedProvider = sendSession.provider || useAppStore().selectedProvider
+    const submittedFastMode = sendSession.fastMode === true && sessionSupportsFastMode(sendSession)
+    const shouldSendInitialSessionConfig = sendSession
+      ? sendSession.messageCount == null || sendSession.messageCount === 0
       : false
-    const isProviderAgent = isProviderAgentSession(activeSession.value)
-    const isBuiltinSlashCommand = !attachments?.length && isBuiltinEkkoSession(activeSession.value) && isKnownEkkoSessionCommand(trimmedContent)
+    const isProviderAgent = isProviderAgentSession(sendSession)
+    const isBuiltinSlashCommand = !attachments?.length && isBuiltinEkkoSession(sendSession) && isKnownEkkoSessionCommand(trimmedContent)
     const isBridgeSlashCommand = !isProviderAgent && isKnownBridgeSessionCommand(trimmedContent)
     const isSessionSlashCommand = isBridgeSlashCommand || isBuiltinSlashCommand
     const isBridgeCompressCommand = isBridgeSlashCommand && /^\/compress(?:\s|$)/i.test(trimmedContent)
@@ -3760,22 +3864,22 @@ export const useChatStore = defineStore('chat', () => {
       const appStore = useAppStore()
       await appStore.waitForModelsForRun()
       if (generation !== runtimeGeneration) return
-      const sessionModel = activeSession.value?.model || appStore.selectedModel
-      const sessionProvider = activeSession.value?.provider || appStore.selectedProvider
-      const sessionProfile = activeSession.value?.profile || useProfilesStore().activeProfileName || undefined
+      const sessionModel = submittedModel || appStore.selectedModel
+      const sessionProvider = submittedProvider || appStore.selectedProvider
+      const sessionProfile = sendSession?.profile || useProfilesStore().activeProfileName || undefined
       const profileModelGroups = sessionProfile
         ? appStore.profileModelGroups.find(entry => entry.profile === sessionProfile)?.groups
         : undefined
       const runModelGroups = profileModelGroups?.length ? profileModelGroups : appStore.modelGroups
       const providerGroup = runModelGroups.find(group => group.provider === sessionProvider)
-      const storedSource = activeSession.value?.source
+      const storedSource = sendSession?.source
       const sessionSource: StartRunRequest['source'] = storedSource === 'global_agent'
         ? 'global_agent'
         : storedSource === 'workflow'
           ? 'workflow'
         : storedSource === 'group_chat'
           ? 'group_chat'
-        : isBuiltinEkkoSession(activeSession.value)
+        : isBuiltinEkkoSession(sendSession)
           ? 'builtin_agent'
         : isProviderAgent
           ? 'coding_agent'
@@ -3785,16 +3889,16 @@ export const useChatStore = defineStore('chat', () => {
       const isCodingAgentExecution = sessionSource === 'builtin_agent' || sessionSource === 'coding_agent'
         || ((sessionSource === 'workflow' || sessionSource === 'group_chat' || sessionSource === 'global_agent') && isProviderAgent)
       const codingAgentId: ChatCodingAgentId =
-        (isBuiltinEkkoSession(activeSession.value) ? 'ekko-agent' : activeSession.value?.codingAgentId) ||
-        agentToCodingAgentId(activeSession.value?.agent) ||
+        (isBuiltinEkkoSession(sendSession) ? 'ekko-agent' : sendSession?.codingAgentId) ||
+        agentToCodingAgentId(sendSession?.agent) ||
         'claude-code'
-      const codingAgentMode = codingAgentId === 'ekko-agent' ? 'scoped' : activeSession.value?.codingAgentMode || 'scoped'
+      const codingAgentMode = codingAgentId === 'ekko-agent' ? 'scoped' : sendSession?.codingAgentMode || 'scoped'
       const codingAgentApiMode = isCodingAgentExecution && codingAgentMode !== 'global'
         ? normalizeCodingAgentApiMode(
-            activeSession.value?.apiMode || providerGroup?.api_mode,
+            sendSession?.apiMode || providerGroup?.api_mode,
             inferCodingAgentApiMode(
               sessionProvider || providerGroup?.provider,
-              activeSession.value?.baseUrl || providerGroup?.base_url,
+              sendSession?.baseUrl || providerGroup?.base_url,
             ),
           )
         : undefined
@@ -3814,18 +3918,18 @@ export const useChatStore = defineStore('chat', () => {
           models: group.models,
         })),
         queue_id: userMsg.id,
-        workspace: activeSession.value?.workspace || undefined,
-        category_id: activeSession.value?.categoryId ?? null,
+        workspace: sendSession?.workspace || undefined,
+        category_id: sendSession?.categoryId ?? null,
         source: sessionSource,
         ...(runtimeMode.value === 'global_agent' ? { session_source: 'global_agent' as const } : {}),
         ...(sessionSource === 'workflow' ? { session_source: 'workflow' as const } : {}),
         ...(isCodingAgentExecution
           ? {
               ...(codingAgentId === 'ekko-agent' ? { agent_id: 'ekko-agent' as const } : { coding_agent_id: codingAgentId }),
-              agent_preset: activeSession.value?.agentPreset,
+              agent_preset: sendSession?.agentPreset,
               mode: codingAgentMode,
-              baseUrl: codingAgentMode === 'global' ? undefined : activeSession.value?.baseUrl || providerGroup?.base_url || undefined,
-              apiKey: codingAgentMode === 'global' ? undefined : activeSession.value?.apiKey || providerGroup?.api_key || undefined,
+              baseUrl: codingAgentMode === 'global' ? undefined : sendSession?.baseUrl || providerGroup?.base_url || undefined,
+              apiKey: codingAgentMode === 'global' ? undefined : sendSession?.apiKey || providerGroup?.api_key || undefined,
               apiMode: codingAgentApiMode,
             }
           : {}),
@@ -3835,11 +3939,12 @@ export const useChatStore = defineStore('chat', () => {
         // injecting a per-session override there.
         reasoning_effort: isCodingAgentExecution && codingAgentMode === 'global'
           ? undefined
-          : activeSession.value?.reasoningEffort || undefined,
-        push_enabled: activeSession.value?.pushEnabled !== false,
+          : sendSession?.reasoningEffort || '',
+        ...(submittedFastMode ? { fast_mode: true } : {}),
+        push_enabled: sendSession?.pushEnabled !== false,
       }
-      if (shouldSendInitialSessionConfig && activeSession.value) {
-        activeSession.value.messageCount = Math.max(activeSession.value.messageCount || 0, 1)
+      if (shouldSendInitialSessionConfig && sendSession) {
+        submittedSession.messageCount = Math.max(submittedSession.messageCount || 0, 1)
       }
 
       // Helper to clean up this session's stream state
@@ -5633,6 +5738,10 @@ export const useChatStore = defineStore('chat', () => {
     ensureSessionLoaded,
     loadOlderMessages,
     switchSessionModel,
+    applyModelPreset,
+    setSessionFastMode,
+    sessionSupportsFastMode,
+    isApplyingModelPreset,
     addOrUpdateSession,
     clearProviderFromSessions,
     deleteSession,

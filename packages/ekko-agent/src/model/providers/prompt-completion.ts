@@ -1,3 +1,4 @@
+import { assertFastModeSupported } from '../fast-mode'
 import type {
   FetchLike,
   ModelCapabilities,
@@ -96,6 +97,7 @@ export class PromptCompletionModelClient implements ModelClient {
 }
 
 export function toPromptCompletionPayload(config: ModelProviderConfig, request: ModelRequest): PromptCompletionPayload {
+  assertFastModeSupported(config, request, 'prompt-completion')
   return {
     model: request.model ?? config.defaultModel,
     prompt: request.messages.map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n\n'),

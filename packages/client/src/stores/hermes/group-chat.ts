@@ -40,6 +40,7 @@ import {
     joinRoomByCode,
     addAgent,
     updateAgent,
+    updateRoomAgentHostAccess,
     listAgents,
     removeAgent,
     removeRoomMember as removeRoomMemberApi,
@@ -1777,6 +1778,13 @@ export const useGroupChatStore = defineStore('groupChat', () => {
         }
     }
 
+    async function setAgentHostAccess(roomId: string, agentId: string, enabled: boolean) {
+        const res = await updateRoomAgentHostAccess(roomId, agentId, enabled)
+        agents.value = mergeRoomAgentRoster(res.agents)
+        projectRoomAgents(roomId, agents.value)
+        return res.agent
+    }
+
     async function removeAgentFromRoom(roomId: string, agentId: string) {
         try {
             snapshotCurrentMessageAgents(agents.value)
@@ -2081,6 +2089,7 @@ export const useGroupChatStore = defineStore('groupChat', () => {
         loadAgents,
         addAgentToRoom,
         updateAgentInRoom,
+        setAgentHostAccess,
         removeAgentFromRoom,
         removeMemberFromRoom,
     }

@@ -1,3 +1,4 @@
+import { assertFastModeSupported } from '../fast-mode'
 import type {
   FetchLike,
   ModelCapabilities,
@@ -74,7 +75,8 @@ function toCustomRuntimePayload(
   request: ModelRequest,
   stream: boolean,
 ): Record<string, unknown> {
-  const { metadata: _metadata, tools, toolChoice, ...rest } = request
+  assertFastModeSupported(config, request, 'custom-runtime')
+  const { metadata: _metadata, fastMode: _fastMode, tools, toolChoice, ...rest } = request
   return {
     ...rest,
     ...(tools?.length

@@ -192,6 +192,7 @@ const selectedRuntimePreset = ref<string>()
 const selectedRuntimePresetReady = ref(false)
 const agentName = ref('')
 const agentDescription = ref('')
+const agentHostAccessEnabled = ref(false)
 const agentAvatar = ref<ProfileAvatarData | null>(null)
 const agentAvatarFileInput = ref<HTMLInputElement | null>(null)
 const agentPresets = ref<GroupAgentPreset[]>([])
@@ -640,6 +641,11 @@ function canManageRoom(room: Pick<RoomInfo, 'canManage'> | null | undefined): bo
     return room?.canManage === true
 }
 const currentRoomCanManage = computed(() => !props.standalone && canManageRoom(currentRoom.value))
+const canConfigureAgentHostAccess = computed(() => !!editingAgent.value
+    && editingAgent.value.executorType !== 'remote'
+    && !!currentRoom.value?.ownerMemberId
+    && currentRoom.value.ownerMemberId === store.userId
+    && editingAgent.value.ownerMemberId === store.userId)
 provide('hermesWorkspaceFilePreview', currentRoomCanManage)
 const currentRoomCanMentionAll = computed(() => !props.standalone && currentRoom.value?.canMentionAll === true)
 const currentRoomNeedsSummaryConfiguration = computed(() => {
@@ -1330,6 +1336,7 @@ function resetAgentForm() {
     selectedAgentReasoningEffort.value = ''
     agentName.value = ''
     agentDescription.value = ''
+    agentHostAccessEnabled.value = false
     agentAvatar.value = null
 }
 
@@ -1585,6 +1592,7 @@ function handleEditAgent(agent: RoomAgent) {
     selectedRuntimePreset.value = agent.agentPreset
     agentName.value = agent.name || ''
     agentDescription.value = agent.description || ''
+    agentHostAccessEnabled.value = agent.hostAccessEnabled === 1
     agentAvatar.value = parseStoredAvatar(agent.avatar)
     showAddAgentDrawer.value = true
     void loadAgentFormOptions()
@@ -1755,7 +1763,8 @@ async function confirmUpdateAgent() {
     if (!canConfirmAddAgent.value || !selectedProfile.value || isSavingAgent.value) return
     isSavingAgent.value = true
     try {
-        await store.updateAgentInRoom(store.currentRoomId, editingAgent.value.id, {
+        const previous = editingAgent.value
+        const metadata = {
             ...submittedCodingAgentSelection({
                 agent: selectedAgentType.value,
                 agentMode: selectedAgentMode.value,
@@ -1771,7 +1780,28 @@ async function confirmUpdateAgent() {
             name: agentName.value.trim() || undefined,
             description: agentDescription.value.trim() || undefined,
             avatar: agentAvatar.value ? JSON.stringify(agentAvatar.value) : '',
-        })
+        }
+        const sameMetadata = metadata.agent === previous.agent
+            && metadata.agentMode === previous.agentMode
+            && (metadata.priorAgentMode || '') === (previous.priorAgentMode || '')
+            && metadata.profile === previous.profile
+            && (metadata.provider || '') === (previous.provider || '')
+            && (metadata.model || '') === (previous.model || '')
+            && (metadata.apiMode || '') === (previous.apiMode || '')
+            && (metadata.reasoningEffort || '') === (previous.reasoningEffort || '')
+            && (metadata.agentPreset || '') === (previous.agentPreset || '')
+            && (metadata.name || metadata.profile) === previous.name
+            && (metadata.description || '') === previous.description
+            && metadata.avatar === (previous.avatar || '')
+        const sameRuntime = metadata.agent === previous.agent && metadata.agentMode === previous.agentMode
+            && metadata.profile === previous.profile && (metadata.provider || '') === (previous.provider || '')
+            && (metadata.model || '') === (previous.model || '') && (metadata.apiMode || '') === (previous.apiMode || '')
+            && (metadata.reasoningEffort || '') === (previous.reasoningEffort || '')
+            && (metadata.agentPreset || '') === (previous.agentPreset || '')
+        if (!sameMetadata) await store.updateAgentInRoom(store.currentRoomId, previous.id, metadata)
+        if (sameRuntime && canConfigureAgentHostAccess.value && agentHostAccessEnabled.value !== (previous.hostAccessEnabled === 1)) {
+            await store.setAgentHostAccess(store.currentRoomId, previous.id, agentHostAccessEnabled.value)
+        }
         closeAgentDrawer()
         message.success(t('common.saved'))
     } catch (err: any) {
@@ -2854,6 +2884,11 @@ function handleClarifyKeydown(event: KeyboardEvent) {
                             :disabled="isLoadingAgentForm"
                             @update:value="handleAgentTypeChange"
                         />
+                    </div>
+                    <div v-if="canConfigureAgentHostAccess" class="form-group">
+                        <label class="form-label" for="group-agent-host-access">{{ t('groupChat.hostAccessLabel') }}</label>
+                        <NSwitch id="group-agent-host-access" v-model:value="agentHostAccessEnabled" :disabled="isSavingAgent" />
+                        <p class="form-hint">{{ t('groupChat.hostAccessHint') }}</p>
                     </div>
                     <div class="form-group">
                         <label class="form-label">{{ t('sidebar.profiles') }}</label>

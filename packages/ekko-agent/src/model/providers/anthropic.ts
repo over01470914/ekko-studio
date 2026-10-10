@@ -1,3 +1,4 @@
+import { assertFastModeSupported } from '../fast-mode'
 import type {
   AgentMessage,
   AgentToolCall,
@@ -194,6 +195,7 @@ export class AnthropicMessagesModelClient implements ModelClient {
 }
 
 export function toAnthropicMessagesPayload(config: ModelProviderConfig, request: ModelRequest): AnthropicPayload {
+  assertFastModeSupported(config, request, 'anthropic-messages')
   const tools = request.tools?.length ? request.tools.map(toAnthropicTool) : undefined
   return {
     model: request.model ?? config.defaultModel,

@@ -8,9 +8,11 @@ import {
 import { isReservedMentionName } from '../services/group-chat/mention-routing'
 import { deleteGroupChatAttachments } from '../services/group-chat/attachments'
 import { revokeGroupAgentConnector } from '../services/group-chat/agent-relay-store'
+import { isRoomOwnerLocalAgent } from '../services/group-chat/host-access'
 import { assertAllowedWorkspaceFolder } from '../public/workspace-files'
 import {
     canManageGroupChatRoom as canManageRoom,
+    canConfigureGroupAgentHostAccess,
     canReadGroupChatRoom as canReadRoom,
     groupChatUserProfiles as userProfiles,
     isGroupChatRoomOwner,
@@ -304,7 +306,8 @@ function roomAgentSummaries(storage: ReturnType<GroupChatServer['getStorage']>, 
     }))
 }
 
-async function connectAndPersistRoomAgent(server: GroupChatServer, roomId: string, input: AgentInput, agentId = generateId()) {
+async function connectAndPersistRoomAgent(server: GroupChatServer, roomId: string, input: AgentInput, ownerUser?: any) {
+    const agentId = generateId()
     const agent = String(input.agent || 'hermes').trim() as AgentInput['agent']
     if (!GROUP_AGENT_TYPES.has(agent || '')) {
         throw new Error('Invalid agent')
@@ -348,6 +351,8 @@ async function connectAndPersistRoomAgent(server: GroupChatServer, roomId: strin
             apiMode,
             reasoningEffort,
             agentPreset: input.agentPreset,
+            ownerMemberId: ownerUser?.status === 'active' && Number.isSafeInteger(ownerUser.id) && ownerUser.id > 0
+                ? `auth:${ownerUser.id}` : '',
             ...(avatar ? { avatar } : {}),
         })
         await server.agentClients.addAgentToRoom(roomId, client)
@@ -518,7 +523,7 @@ export async function createRoom(ctx: any) {
                 description: a.description || '',
                 avatar: a.avatar,
                 invited: a.invited,
-            })
+            }, ctx.state?.user)
             addedAgents.push(agent)
             agentResults.push({ profile: a.profile, ok: true, agent })
         } catch (err: any) {
@@ -591,7 +596,7 @@ export async function cloneRoom(ctx: any) {
                 description: sourceAgent.description,
                 avatar: sourceAgent.avatar,
                 invited: sourceAgent.invited,
-            })
+            }, ctx.state?.user)
             addedAgents.push(agent)
             agentResults.push({ profile: sourceAgent.profile, ok: true, agent })
         } catch (err: any) {
@@ -847,7 +852,7 @@ export async function addRoomAgent(ctx: any) {
             description: description || '',
             avatar: normalizedAvatar,
             invited,
-        })
+        }, ctx.state?.user)
         chatServer.broadcastRoomAgents(ctx.params.roomId)
         ctx.body = { agent }
     } catch (err: any) {
@@ -1055,6 +1060,70 @@ export async function updateRoomAgent(ctx: any) {
         console.error(`[GroupChat] Failed to update agent ${normalizedProfile} in room ${roomId}: ${sanitizeAgentConnectReason(err.message)}`)
         ctx.status = 502
         ctx.body = agentConnectFailureBody(normalizedProfile, err)
+    } finally {
+        roomAgentUpdates.delete(updateKey)
+    }
+}
+
+// Update only the persisted permission; never replace an active executor for a flag change.
+export async function updateRoomAgentHostAccess(ctx: any) {
+    if (!chatServer) {
+        ctx.status = 503
+        ctx.body = { error: 'Group chat not initialized' }
+        return
+    }
+    const storage = chatServer.getStorage()
+    const roomId = ctx.params.roomId
+    const agent = storage.getRoomAgent(roomId, ctx.params.agentId)
+    if (!storage.getRoom(roomId) || !agent) {
+        ctx.status = 404
+        ctx.body = { error: 'Room Agent not found' }
+        return
+    }
+    if (ctx.state?.runCredential === true || !canConfigureGroupAgentHostAccess(storage, roomId, ctx.state?.user)) {
+        ctx.status = 403
+        ctx.body = { error: 'Only the authenticated room owner can configure host access' }
+        return
+    }
+    const body = ctx.request.body
+    if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.hostAccessEnabled !== 'boolean') {
+        ctx.status = 400
+        ctx.body = { error: 'hostAccessEnabled must be a boolean' }
+        return
+    }
+    if (!isRoomOwnerLocalAgent(agent, `auth:${ctx.state.user.id}`)) {
+        ctx.status = 409
+        ctx.body = { error: 'Host access is only available to the room owner’s local Agents' }
+        return
+    }
+    const updateKey = `${roomId}:${agent.agentId}`
+    if (roomDeletions.has(roomId) || roomAgentUpdates.has(updateKey)) {
+        ctx.status = 409
+        ctx.body = { error: 'Agent configuration update is already in progress' }
+        return
+    }
+    roomAgentUpdates.add(updateKey)
+    try {
+        const updated = storage.setRoomAgentHostAccess(roomId, agent.id, body.hostAccessEnabled, `auth:${ctx.state.user.id}`)
+        if (!updated) {
+            ctx.status = 404
+            ctx.body = { error: 'Room Agent not found' }
+            return
+        }
+        const agents = chatServer.broadcastRoomAgents(roomId)
+        if (!body.hostAccessEnabled) {
+            const active = chatServer.agentClients.getAgent(roomId, agent.agentId)
+            if (active) {
+                try {
+                    if (!await active.interrupt(roomId)) throw new Error('Agent interrupt was not synchronized')
+                } catch {
+                    ctx.status = 503
+                    ctx.body = { error: 'Host access was revoked, but the Agent run could not be confirmed stopped. Verify the Agent is idle before relying on revocation.' }
+                    return
+                }
+            }
+        }
+        ctx.body = { agent: updated, agents }
     } finally {
         roomAgentUpdates.delete(updateKey)
     }

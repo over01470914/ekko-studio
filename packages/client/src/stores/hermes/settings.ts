@@ -1,3 +1,5 @@
+import { useModelPresetsStore } from './model-presets'
+import { getActiveProfileName, getModelsPageProfile } from '@/api/client'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as configApi from '@/api/hermes/config'
@@ -69,10 +71,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function fetchSettings(options?: { shouldCommit?: () => boolean }) {
     loading.value = true
+    const presetProfile = getModelsPageProfile() || getActiveProfileName() || 'default'
+    const presetRevision = useModelPresetsStore().revision(presetProfile)
     try {
-      const data = await configApi.fetchConfig()
+      const data = await configApi.fetchConfig(undefined, { profile: presetProfile })
       if (options?.shouldCommit && !options.shouldCommit()) return false
       display.value = data.display || {}
+      useModelPresetsStore().hydrate(presetProfile, display.value, presetRevision)
       agent.value = data.agent || {}
       memory.value = data.memory || {}
       skills.value = data.skills || {}

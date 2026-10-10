@@ -1,3 +1,4 @@
+import { assertFastModeSupported } from '../fast-mode'
 import { ModelProviderError } from '../errors'
 import { agentReasoningText, normalizeAgentReasoning } from '../messages'
 import {
@@ -70,6 +71,7 @@ interface OpenAIChatResponseMessage {
 
 interface OpenAIChatPayload {
   model: string
+  service_tier?: 'priority'
   messages: OpenAIChatMessage[]
   temperature?: number
   max_tokens?: number
@@ -361,6 +363,7 @@ function isUnsupportedImageError(error: unknown): boolean {
 }
 
 export function toOpenAIChatPayload(config: ModelProviderConfig, request: ModelRequest): OpenAIChatPayload {
+  assertFastModeSupported(config, request, 'openai-chat')
   const isQwenOAuth = config.id === 'qwen-oauth'
   const supportsVision = config.capabilities?.vision !== false
   const model = request.model ?? config.defaultModel
@@ -394,6 +397,7 @@ export function toOpenAIChatPayload(config: ModelProviderConfig, request: ModelR
   return {
     model,
     messages: chatMessages,
+    ...(request.fastMode === true ? { service_tier: 'priority' as const } : {}),
     temperature: request.temperature,
     max_tokens: request.maxTokens,
     ...(tools

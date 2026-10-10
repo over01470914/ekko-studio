@@ -1,3 +1,4 @@
+import { resolveModelFastMode, assertFastModeSupported } from '../../public/model-fast-mode'
 import { completeRunUsage } from '../../repositories/run-usage-store'
 import { studioMcpUsageGuidelines } from '../../public/runs/prompt'
 import { leaseEkkoMcpServers } from './ekko-mcp-lease'
@@ -111,6 +112,7 @@ export interface EkkoAgentRunSocketData {
   mcp_servers?: Record<string, unknown>
   peerExcludeSocketId?: string
   queue_id?: string
+  fast_mode?: boolean
   reasoning_effort?: string
   push_enabled?: boolean
   background_delegation_enabled?: boolean
@@ -447,20 +449,6 @@ export async function handleEkkoAgentRun(
 
   socket.join(`session:${sessionId}`)
   const state = getOrCreateSession(sessionMap, sessionId)
-  state.isWorking = true
-  state.isAborting = false
-  state.profile = profile
-  state.webhookAgent = 'ekko'
-  state.source = data.session_source === 'group_chat' || data.source === 'group_chat'
-    ? 'group_chat'
-    : data.session_source === 'workflow' || data.source === 'workflow'
-      ? 'workflow'
-      : data.session_source === 'global_agent' || data.source === 'global_agent'
-        ? 'global_agent'
-        : 'builtin_agent'
-  state.events = []
-  const abortController = new AbortController()
-  state.abortController = abortController
 
   if (storedSession && !storedSession.user_id && authenticatedUserId) {
     updateSession(sessionId, { user_id: authenticatedUserId })
@@ -489,6 +477,38 @@ export async function handleEkkoAgentRun(
   const baseUrl = runtimeConfig.baseUrl || ''
   const apiMode = runtimeConfig.apiMode
   const apiKey = runtimeConfig.apiKey
+  const { providerConfig, fallbackProviderConfig } = resolveModelProviderConfigs({
+    provider: modelConfig.provider,
+    baseUrl,
+    apiKey,
+    model: modelConfig.model,
+    apiMode,
+    timeoutMs: getChatEkkoModelRequestTimeoutMs(),
+  })
+  for (const config of [providerConfig, fallbackProviderConfig].filter(Boolean)) {
+    const fastMode = resolveModelFastMode({ provider: modelConfig.provider, baseUrl, model: modelConfig.model,
+      requestStyle: config.requestStyle })
+    config.modelMetadata = { [modelConfig.model]: { fast_mode: fastMode } }
+  }
+  if (data.fast_mode === true && apiMode !== 'chat_completions' && apiMode !== 'codex_responses') {
+    throw Object.assign(new Error('Fast mode requires the Chat Completions or Responses API'), { status: 400 })
+  }
+  assertFastModeSupported(providerConfig, { messages: [], model: modelConfig.model, fastMode: data.fast_mode }, providerConfig.requestStyle)
+  state.isWorking = true
+  state.isAborting = false
+  state.profile = profile
+  state.webhookAgent = 'ekko'
+  state.source = data.session_source === 'group_chat' || data.source === 'group_chat'
+    ? 'group_chat'
+    : data.session_source === 'workflow' || data.source === 'workflow'
+      ? 'workflow'
+      : data.session_source === 'global_agent' || data.source === 'global_agent'
+        ? 'global_agent'
+        : 'builtin_agent'
+  state.events = []
+  const abortController = new AbortController()
+  state.abortController = abortController
+
   const persistedReasoningEffort = normalizeReasoningEffort(data.reasoning_effort ?? storedSession?.reasoning_effort)
   const reasoningEffort = resolveReasoningEffort(persistedReasoningEffort)
   const agent = getGlobalEkkoAgent(profile)
@@ -625,14 +645,6 @@ export async function handleEkkoAgentRun(
     })
   }
 
-  const { providerConfig, fallbackProviderConfig } = resolveModelProviderConfigs({
-    provider: modelConfig.provider,
-    baseUrl,
-    apiKey,
-    model: modelConfig.model,
-    apiMode,
-    timeoutMs: getChatEkkoModelRequestTimeoutMs(),
-  })
   const authorizedProviderFetch = createAuthorizedProviderFetch({
     profile,
     provider: modelConfig.provider,
@@ -790,6 +802,7 @@ export async function handleEkkoAgentRun(
       apiKey,
       apiMode,
       mcpServers,
+      fastMode: data.fast_mode,
       reasoningEffort,
       backgroundDelegationId: event.subagentId,
       backgroundContinuationContext: {
@@ -1442,10 +1455,12 @@ export async function handleEkkoAgentRun(
     const result = await agent.run({
       modelClient,
       model: modelConfig.model,
+      fastMode: data.fast_mode,
       reasoningEffort,
       reasoningSummary: 'auto',
       modelDefaults: {
         model: modelConfig.model,
+        fastMode: data.fast_mode,
         reasoningEffort,
         reasoningSummary: 'auto',
       },

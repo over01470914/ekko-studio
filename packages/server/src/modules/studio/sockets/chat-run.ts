@@ -523,6 +523,7 @@ export class ChatRunSocket {
     model?: string
     provider?: string
     api_mode?: string
+    fast_mode?: boolean
     reasoning_effort?: string
     push_enabled?: boolean
   }): void {
@@ -934,6 +935,7 @@ export class ChatRunSocket {
       profile?: string
       allow_command_passthrough?: boolean
       // Local patch (reasoning-effort): per-session reasoning effort override.
+      fast_mode?: boolean
       reasoning_effort?: string
       push_enabled?: boolean
     }) => {
@@ -944,6 +946,8 @@ export class ChatRunSocket {
       try {
         runProfile = resolveRunProfile(data.session_id, data.profile)
         normalizeEkkoRunData(data, data.session_id ? getSession(data.session_id) : undefined)
+        if (data.fast_mode !== undefined && typeof data.fast_mode !== 'boolean') throw Object.assign(new Error('fast_mode must be a boolean'), { status: 400 })
+        if (data.fast_mode === true && !isEkkoAgentExecution(data)) throw Object.assign(new Error('Fast mode is not supported by this execution engine'), { status: 400 })
         if (!shared && data.session_id && Array.isArray(data.input)) {
           // New chats carry a client-generated id; the runtime persists them on the first run.
           if (getSession(data.session_id)) requireSocketSessionAccess(data.session_id)
@@ -1060,6 +1064,7 @@ export class ChatRunSocket {
             mcpServers: data.mcpServers,
             mcp_servers: data.mcp_servers,
             commandPassthrough: data.allow_command_passthrough,
+            fastMode: data.fast_mode,
             reasoningEffort: data.reasoning_effort,
             originSocketId: socket.id,
             authorize: shared ? async () => { await refreshSessionShare(shared, 'input', data.session_id) } : undefined,
@@ -1569,6 +1574,7 @@ export class ChatRunSocket {
       mcp_servers?: Record<string, unknown>
       one_shot_model?: boolean
       allow_command_passthrough?: boolean
+      fast_mode?: boolean
       reasoning_effort?: string
       push_enabled?: boolean
       background_delegation_enabled?: boolean
@@ -1584,6 +1590,10 @@ export class ChatRunSocket {
     pushTargetId?: string,
   ) {
     normalizeEkkoRunData(data, data.session_id ? getSession(data.session_id) : undefined)
+    if (data.fast_mode !== undefined && typeof data.fast_mode !== 'boolean') throw Object.assign(new Error('fast_mode must be a boolean'), { status: 400 })
+    if (data.fast_mode === true && !isEkkoAgentExecution(data)) {
+      throw Object.assign(new Error('Fast mode is not supported by this execution engine'), { status: 400 })
+    }
     const source = resolveRunSource(data.source, data.session_id)
     const surface = data.session_source || source
     if (data.session_id) getOrCreateSession(this.sessionMap, data.session_id).pushTargetId = pushTargetId
@@ -1629,6 +1639,7 @@ export class ChatRunSocket {
     if (data.session_id && !isEkkoAgentExecution(data) && isBridgeRunSource(source) && isSessionCommand(data.input) && data.allow_command_passthrough !== true) return
 
     if (!isProviderAgentExecution(source, data)) {
+      if (data.fast_mode === true) throw Object.assign(new Error('Fast mode is not supported by the Hermes engine'), { status: 400 })
       const bridgeReady = await ensureBridgeReadyForChatRun()
       if (!bridgeReady.ok) {
         let shouldDequeueNext = false
@@ -2512,11 +2523,26 @@ export class ChatRunSocket {
       mcp_servers: next.mcp_servers,
       one_shot_model: next.oneShotModel,
       allow_command_passthrough: next.commandPassthrough,
+      fast_mode: next.fastMode,
       reasoning_effort: next.reasoningEffort,
       background_delegation_id: next.backgroundDelegationId,
       background_claim_id: next.backgroundClaimId,
       autonomous: next.autonomous,
-    }, runProfile, skipUserMessage, backgroundContinuationContext, next.pushTargetId)
+    }, runProfile, skipUserMessage, backgroundContinuationContext, next.pushTargetId).catch(error => {
+      this.emitToSession(socket, sessionId, 'run.failed', {
+        event: 'run.failed', session_id: sessionId, queue_id: next.queue_id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      // Preparation/validation errors happen before an execution owns the state.
+      // They must release the reservation rather than strand all later messages.
+      const current = this.sessionMap.get(sessionId)
+      if (current && !current.abortController && !current.activeRunMarker) {
+        current.isWorking = false
+        current.isAborting = false
+        current.runStartedAt = undefined
+        this.dequeueNextQueuedRun(socket, sessionId, runProfile)
+      }
+    })
   }
 
   // --- Helpers ---
@@ -2560,6 +2586,7 @@ export class ChatRunSocket {
       mcpServers?: Record<string, unknown>
       mcp_servers?: Record<string, unknown>
       profile?: string
+      fast_mode?: boolean
       reasoning_effort?: string
       /** Hermes Agent creation policy used by internal orchestration callers. */
       background_delegation_enabled?: boolean

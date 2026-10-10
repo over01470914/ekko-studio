@@ -15403,6 +15403,112 @@
         ]
       }
     },
+    "/api/studio/group-chat/rooms/{roomId}/agents/{agentId}/host-access": {
+      "put": {
+        "tags": [
+          "Group Chat"
+        ],
+        "summary": "Set host access for one local room Agent",
+        "description": "Only the active authenticated room owner may set this flag for a local room Agent; managed run MCP credentials, guests, remote connectors, and explicitly foreign-owned Agents are denied. A legacy local Agent with blank owner may be attributed to the authenticated room owner when the owner configures this flag. Default off. Persisted same-owner local Agent handoffs may access task-related host files outside the workspace on subsequent turns. Credential and private-memory rules remain in force. Every disabling request persists revocation and confirms target interruption/idle, including retries while already off; if interruption cannot be confirmed the endpoint returns 503 with the flag already off and the roster updated.",
+        "operationId": "updateRoomAgentHostAccess",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated Agent and room roster",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agent",
+                    "agents"
+                  ],
+                  "properties": {
+                    "agent": {
+                      "type": "object",
+                      "properties": {
+                        "hostAccessEnabled": {
+                          "type": "integer",
+                          "enum": [
+                            0,
+                            1
+                          ]
+                        }
+                      }
+                    },
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "hostAccessEnabled must be a strict boolean"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not the authenticated room owner or a managed run credential"
+          },
+          "404": {
+            "description": "Room or Agent not found"
+          },
+          "409": {
+            "description": "Remote connector, explicitly foreign-owned Agent, or concurrent room/Agent update"
+          },
+          "503": {
+            "description": "Revocation persisted but interruption could not be confirmed; verify the Agent is idle"
+          }
+        },
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hostAccessEnabled"
+                ],
+                "properties": {
+                  "hostAccessEnabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/studio/group-chat/rooms/{roomId}/attachment-uploads": {
       "post": {
         "tags": [

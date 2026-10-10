@@ -35,6 +35,16 @@ export function isGroupChatRoomOwner(storage: GroupChatStorage, roomId: string, 
     return Boolean(room && isRoomOwner(room, user))
 }
 
+/** Host permissions require the explicit authenticated owner, not profile access or legacy admin fallback. */
+export function canConfigureGroupAgentHostAccess(storage: GroupChatStorage, roomId: string, user: any): boolean {
+    const room = storage.getRoom(roomId)
+    return Number.isSafeInteger(user?.id) && user.id > 0
+        && Number.isSafeInteger(room?.ownerAuthUserId)
+        && room.ownerAuthUserId > 0
+        && user.id === room.ownerAuthUserId
+        && user.status === 'active'
+}
+
 export function canReadGroupChatRoom(storage: GroupChatStorage, roomId: string, user: any): boolean {
     if (canManageGroupChatRoom(storage, roomId, user)) return true
     return typeof user?.id === 'number' && typeof storage.getMemberByAuthUserId === 'function' && !!storage.getMemberByAuthUserId(roomId, user.id)

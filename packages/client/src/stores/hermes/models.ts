@@ -8,6 +8,7 @@ import { useProfilesStore } from './profiles'
 
 export const useModelsStore = defineStore('models', () => {
   const providers = ref<AvailableModelGroup[]>([])
+  const providersProfile = ref('')
   const allProviders = ref<AvailableModelGroup[]>([])
   const defaultModel = ref('')
   const defaultProvider = ref('')
@@ -45,6 +46,7 @@ export const useModelsStore = defineStore('models', () => {
       // not a credential-backed provider that belongs in model settings or
       // auxiliary-model configuration.
       providers.value = res.groups.filter(group => group.provider !== 'moa')
+      providersProfile.value = profile
       allProviders.value = res.allProviders
       defaultModel.value = res.default
       defaultProvider.value = res.default_provider || ''
@@ -141,6 +143,7 @@ export const useModelsStore = defineStore('models', () => {
 
   return {
     providers,
+    providersProfile,
     allProviders,
     defaultModel,
     defaultProvider,

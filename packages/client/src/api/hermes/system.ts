@@ -45,7 +45,7 @@ export interface AvailableModelGroup {
   model_refresh_reason?: string
   model_restore_available?: boolean
   /** 可选：模型 ID -> 展示与能力元数据。alias 仅用于 Web UI 展示。 */
-  model_meta?: Record<string, { preview?: boolean; disabled?: boolean; alias?: string; reasoning?: boolean; reasoning_efforts?: string[] }>
+  model_meta?: Record<string, { preview?: boolean; disabled?: boolean; alias?: string; reasoning?: boolean; reasoning_efforts?: string[]; fast_mode?: boolean }>
 }
 
 export interface ProfileAvailableModels {

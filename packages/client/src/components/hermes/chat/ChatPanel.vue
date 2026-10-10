@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useModelPresetsStore } from '@/stores/hermes/model-presets'
+import { modelPresetIssue } from '@/utils/model-presets'
+
 import { isNativeCodingAgent, isGlobalOnlyCodingAgent } from '@/utils/agent-catalog'
 import PageSidebar from "@/components/layout/PageSidebar.vue"
 import { usePageSidebarState } from "@/composables/usePageSidebar"
@@ -1150,7 +1153,22 @@ function syncNewChatApiMode() {
 }
 
 function syncNewChatModelSelection() {
+  if (showNewChatModal.value && !useModelPresetsStore().hasLoaded(newChatProfile.value)) {
+    const profile = newChatProfile.value;
+    void useModelPresetsStore().load(profile).then(ok => {
+      if (ok && showNewChatModal.value && newChatProfile.value === profile &&
+        newChatModel.value === defaults.model && newChatProvider.value === defaults.provider &&
+        !newChatBaseUrl.value.trim() && !newChatApiKey.value.trim() &&
+        newChatApiMode.value === defaultNewChatApiMode(selectedNewChatProviderGroup.value)) syncNewChatModelSelection();
+    });
+  }
   const defaults = getDefaultModelForProfile(newChatProfile.value);
+  const presetConfig = useModelPresetsStore().get(newChatProfile.value);
+  const defaultStep = presetConfig.presets.find(step => step.id === presetConfig.defaultPresetId);
+  if (defaultStep && !isNewChatGlobalCodingAgent.value && !modelPresetIssue(defaultStep, getSelectableModelGroupsForProfile(newChatProfile.value))) {
+    defaults.provider = defaultStep.providerId;
+    defaults.model = defaultStep.modelId;
+  }
   newChatModelKind.value = defaults.provider === "moa" && newChatAgent.value === "hermes"
     ? "moa"
     : "model";

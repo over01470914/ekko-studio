@@ -97,6 +97,7 @@ export interface QueuedRun {
   commandPassthrough?: boolean
   originSocketId?: string
   goalContinuation?: boolean
+  fastMode?: boolean
   reasoningEffort?: string
   backgroundDelegationId?: string
   backgroundClaimId?: string

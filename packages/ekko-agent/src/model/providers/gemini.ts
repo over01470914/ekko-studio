@@ -1,3 +1,4 @@
+import { assertFastModeSupported } from '../fast-mode'
 import type {
   AgentMessage,
   AgentToolCall,
@@ -136,6 +137,7 @@ export class GeminiContentsModelClient implements ModelClient {
 }
 
 export function toGeminiContentsPayload(config: ModelProviderConfig, request: ModelRequest): GeminiPayload {
+  assertFastModeSupported(config, request, 'gemini-contents')
   return {
     systemInstruction: request.messages.some(message => message.role === 'system')
       ? { parts: request.messages.filter(message => message.role === 'system').map(message => ({ text: message.content })) }

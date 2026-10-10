@@ -1094,6 +1094,7 @@ export class AgentRuntime {
       model: input.model ?? modelDefaults?.model,
       temperature: input.temperature ?? modelDefaults?.temperature,
       maxTokens: input.maxTokens ?? modelDefaults?.maxTokens,
+      fastMode: input.fastMode ?? modelDefaults?.fastMode,
       reasoningEffort: input.reasoningEffort ?? modelDefaults?.reasoningEffort,
       reasoningSummary: input.reasoningSummary ?? modelDefaults?.reasoningSummary,
       metadata: input.metadata ?? modelDefaults?.metadata,
@@ -1418,6 +1419,7 @@ export class AgentRuntime {
           model: parentInput.model,
           temperature: parentInput.temperature,
           maxTokens: parentInput.maxTokens,
+          fastMode: parentInput.fastMode,
           reasoningEffort: parentInput.reasoningEffort,
           reasoningSummary: parentInput.reasoningSummary,
           metadata: {

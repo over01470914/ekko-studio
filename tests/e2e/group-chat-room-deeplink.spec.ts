@@ -4,7 +4,7 @@ import { authenticate, TEST_MODEL_GROUP } from './fixtures'
 type DesktopPlatform = 'darwin' | 'win32'
 
 const baseRooms = [
-  { id: 'room-alpha', name: 'Alpha Room', inviteCode: 'ALPHA1', canManage: true, workspace: '/tmp/alpha', triggerTokens: 100000, maxHistoryTokens: 32000, tailMessageCount: 10, totalTokens: 123, summaryProfile: 'default', summaryProvider: 'test-provider', summaryModel: 'test-model', summaryApiMode: 'chat_completions', summaryEveryTurns: 20, allowGuestAgents: 1, maxGuestAgentsPerMember: 1, allowRemoteWorkspaceAccess: 0, agentHandoffEnabled: 1, agentHandoffMaxDepth: 4, agentHandoffUnlimited: 0, createdAt: 1_790_000_000, lastActiveAt: 1_790_000_001 },
+  { id: 'room-alpha', name: 'Alpha Room', ownerMemberId: 'auth:1', inviteCode: 'ALPHA1', canManage: true, workspace: '/tmp/alpha', triggerTokens: 100000, maxHistoryTokens: 32000, tailMessageCount: 10, totalTokens: 123, summaryProfile: 'default', summaryProvider: 'test-provider', summaryModel: 'test-model', summaryApiMode: 'chat_completions', summaryEveryTurns: 20, allowGuestAgents: 1, maxGuestAgentsPerMember: 1, allowRemoteWorkspaceAccess: 0, agentHandoffEnabled: 1, agentHandoffMaxDepth: 4, agentHandoffUnlimited: 0, createdAt: 1_790_000_000, lastActiveAt: 1_790_000_001 },
   { id: 'room-beta', name: 'Beta Room', inviteCode: 'BETA22', canManage: true, workspace: '/tmp/beta', triggerTokens: 100000, maxHistoryTokens: 32000, tailMessageCount: 10, totalTokens: 456, allowGuestAgents: 1, maxGuestAgentsPerMember: 1, allowRemoteWorkspaceAccess: 0, createdAt: 1_790_000_000, lastActiveAt: 1_790_000_100 },
   { id: 'room-readonly', name: 'Read Only Room', inviteCode: null, canManage: false, workspace: '/tmp/readonly', triggerTokens: 100000, maxHistoryTokens: 32000, tailMessageCount: 10, totalTokens: 0, createdAt: 1_789_999_999, lastActiveAt: 1_789_999_999 },
 ]
@@ -65,7 +65,9 @@ const agentsByRoom: Record<string, unknown[]> = {
       id: 'agent-row-1',
       roomId: 'room-alpha',
       agentId: 'agent-1',
+      ownerMemberId: 'auth:1',
       agent: 'hermes',
+      agentMode: 'scoped',
       profile: 'default',
       provider: 'test-provider',
       model: 'test-model',
@@ -98,6 +100,8 @@ const agentsByRoom: Record<string, unknown[]> = {
 
 async function mockGroupChatApi(page: Page, offlinePresence = false) {
   const rooms = baseRooms.map(room => ({ ...room }))
+  const agentsForRoom = structuredClone(agentsByRoom) as Record<string, any[]>
+  const hostAccessUpdates: boolean[] = []
   let roomMessages = structuredClone(messagesByRoom)
   const roomDetailRequests: Array<{ roomId: string, offset: number, limit: number, before: string, history: boolean }> = []
   const roomDetailFailures = new Map<string, number>()
@@ -167,6 +171,7 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
     if (pathname === '/health') return json({ status: 'ok' })
+    if (pathname === '/api/auth/me') return json({ user: { id: 1, username: 'playwright', role: 'super_admin', status: 'active', profiles: ['default'] } })
     if (pathname === '/api/auth/status') return json({ hasPasswordLogin: false, username: null })
     if (pathname === '/api/hermes/runtime-versions/jobs' && request.method() === 'GET') return json({ jobs: [] })
     if (pathname === '/api/agents/status' && request.method() === 'GET') {
@@ -239,7 +244,7 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
       return json({
         rooms: rooms.map(room => ({
           ...room,
-          agents: (agentsByRoom[room.id] || []).map((agent: any) => ({
+          agents: (agentsForRoom[room.id] || []).map((agent: any) => ({
             id: agent.id,
             roomId: agent.roomId,
             agentId: agent.agentId,
@@ -257,6 +262,15 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
       const body = JSON.parse(request.postData() || '{}')
       addedAgents.push({ roomId, body })
       return json({ agent: { ...body, id: 'agent-from-preset', roomId, agentId: 'runtime-from-preset', invited: 0 } })
+    }
+    const hostAccessMatch = pathname.match(/^\/api\/studio\/group-chat\/rooms\/([^/]+)\/agents\/([^/]+)\/host-access$/)
+    if (hostAccessMatch && request.method() === 'PUT') {
+      const enabled = request.postDataJSON().hostAccessEnabled
+      hostAccessUpdates.push(enabled)
+      const agent = agentsForRoom[decodeURIComponent(hostAccessMatch[1])]?.find(item => item.id === decodeURIComponent(hostAccessMatch[2]))
+      if (!agent) return json({ error: 'Agent not found' }, 404)
+      agent.hostAccessEnabled = enabled ? 1 : 0
+      return json({ agent, agents: agentsForRoom[decodeURIComponent(hostAccessMatch[1])] })
     }
 
     const handoffContinueMatch = pathname.match(/^\/api\/studio\/group-chat\/rooms\/([^/]+)\/handoffs\/([^/]+)\/continue$/)
@@ -373,7 +387,7 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
         roomDetailFailures.set(failureKey, remainingFailures - 1)
         return json({ error: 'Temporary history failure' }, 500)
       }
-      const agents = (agentsByRoom[roomId] || []).map(agent => (
+      const agents = (agentsForRoom[roomId] || []).map(agent => (
         offlinePresence ? { ...(agent as object), connectionStatus: 'offline' } : agent
       ))
       const members = offlinePresence
@@ -412,6 +426,7 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
     roomConfigUpdates,
     roomDetailRequests,
     addedAgents,
+    hostAccessUpdates,
     createdRooms,
     presetOperations,
     failRoomDetail(roomId: string, offset: number, times = 1) {
@@ -1420,6 +1435,40 @@ test.describe('group chat room deep links', () => {
       await expect(modal).toBeVisible()
       await expect(modal.getByText('Avatar', { exact: true })).toBeVisible()
       await expect(modal.getByText('Agent Name', { exact: true })).toBeVisible()
+    })
+  }
+
+  for (const width of [1280, 390]) {
+    test(`owner saves and reloads per-Agent host access at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      const api = await setup(page, '/#/hermes/group-chat/room/room-alpha')
+      await page.locator('.agent-avatar-rail-agent').first().click()
+      const drawer = page.locator('.n-drawer').filter({ hasText: 'Edit Worker' })
+      await expect(drawer.getByText('Allow this Agent to access host files outside the workspace')).toBeVisible()
+      const toggle = drawer.locator('#group-agent-host-access')
+      await expect(toggle).toHaveAttribute('aria-checked', 'false')
+      await toggle.scrollIntoViewIfNeeded()
+      await expect(toggle).toBeInViewport()
+      await expect.poll(() => toggle.evaluate(element => {
+        const box = element.getBoundingClientRect()
+        return box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth
+      })).toBe(true)
+      await expect(drawer.getByText('Off by default.', { exact: false })).toBeInViewport()
+      await drawer.screenshot({ path: testInfo.outputPath(`host-access-off-${width}.png`) })
+      await toggle.click()
+      await drawer.getByRole('button', { name: 'Update', exact: true }).click()
+      await expect.poll(() => api.hostAccessUpdates).toEqual([true])
+      await page.reload()
+      await page.locator('.agent-avatar-rail-agent').first().click()
+      const reloaded = page.locator('.n-drawer').filter({ hasText: 'Edit Worker' })
+      const onToggle = reloaded.locator('#group-agent-host-access')
+      await expect(onToggle).toHaveAttribute('aria-checked', 'true')
+      await onToggle.scrollIntoViewIfNeeded()
+      await expect(onToggle).toBeInViewport()
+      await reloaded.screenshot({ path: testInfo.outputPath(`host-access-on-${width}.png`) })
+      await onToggle.click()
+      await reloaded.getByRole('button', { name: 'Update', exact: true }).click()
+      await expect.poll(() => api.hostAccessUpdates).toEqual([true, false])
     })
   }
 

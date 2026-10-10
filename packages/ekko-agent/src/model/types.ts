@@ -95,6 +95,8 @@ export interface ModelRequest {
   signal?: AbortSignal
   temperature?: number
   maxTokens?: number
+  /** Per-request priority processing; independent of reasoning effort. */
+  fastMode?: boolean
   reasoningEffort?: ModelReasoningEffort
   reasoningSummary?: ModelReasoningSummary
   tools?: AgentToolDefinition[]
@@ -148,6 +150,8 @@ export interface ModelProviderConfig {
   baseUrl?: string
   endpointPath?: string
   defaultModel: string
+  /** Trusted capability overrides keyed by exact model ID. */
+  modelMetadata?: Record<string, { fast_mode?: boolean }>
   headers?: Record<string, string>
   timeoutMs?: number
   capabilities?: Partial<ModelCapabilities>

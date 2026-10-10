@@ -16,6 +16,8 @@ export interface CatalogModel {
   canonical_model_id?: string
   limit?: { context?: number; input?: number; output?: number }
   cost?: Record<string, unknown>
+  /** Optional trusted provider/model override; not present in the current models.dev feed. */
+  fast_mode?: boolean
   reasoning?: boolean
   reasoning_options?: Array<{ type: string; values?: string[]; min?: number; max?: number }>
   attachment?: boolean

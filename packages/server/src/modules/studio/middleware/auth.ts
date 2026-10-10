@@ -22,6 +22,7 @@ export interface AuthenticatedUser {
   id: number
   username: string
   role: UserRole
+  status?: UserRecord['status']
   profiles?: string[]
 }
 
@@ -259,11 +260,12 @@ export async function issueModelRunJwt(user: Pick<UserRecord, 'id' | 'username' 
   return signUserJwt(user, secret, Date.now(), getModelRunJwtExpiresSeconds())
 }
 
-export function toAuthenticatedUser(user: Pick<UserRecord, 'id' | 'username' | 'role'>): AuthenticatedUser {
+export function toAuthenticatedUser(user: Pick<UserRecord, 'id' | 'username' | 'role' | 'status'>): AuthenticatedUser {
   const authenticated: AuthenticatedUser = {
     id: user.id,
     username: user.username,
     role: user.role,
+    status: user.status,
   }
   if (user.role !== 'super_admin') {
     authenticated.profiles = listUserProfiles(user.id).map(profile => profile.profile_name)
@@ -359,6 +361,7 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
       return
     }
     ctx.state.profile = { name: binding.profile }
+    ctx.state.runCredential = true
     await next()
     return
   }

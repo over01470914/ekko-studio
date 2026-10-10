@@ -27,7 +27,7 @@ import { providerModelRefreshCapabilities } from '../services/providers/provider
 
 const PROVIDER_MODEL_CATALOG = buildProviderModelMap()
 
-type ModelMeta = { preview?: boolean; disabled?: boolean; alias?: string; reasoning?: boolean; reasoning_efforts?: string[] }
+type ModelMeta = { preview?: boolean; disabled?: boolean; alias?: string; fast_mode?: boolean; reasoning?: boolean; reasoning_efforts?: string[] }
 type ProviderApiMode = 'chat_completions' | 'codex_responses' | 'anthropic_messages' | 'bedrock_converse' | 'codex_app_server'
 type AvailableGroup = { provider: string; label: string; base_url: string; models: string[]; api_key: string; api_mode?: ProviderApiMode; builtin?: boolean; model_meta?: Record<string, ModelMeta>; available_models?: string[]; base_url_env?: string; provider_source?: 'custom_providers' | 'providers'; provider_key?: string; provider_editable?: boolean; editable_fields?: ProviderEditableField[]; model_refreshable?: boolean; model_refresh_reason?: string; model_restore_available?: boolean }
 type ModelVisibility = Record<string, ModelVisibilityRule>

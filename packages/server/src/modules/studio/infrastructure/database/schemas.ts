@@ -1031,6 +1031,7 @@ export const GC_ROOM_AGENTS_SCHEMA: Record<string, string> = {
   invited: 'INTEGER NOT NULL DEFAULT 0',
   executorType: "TEXT NOT NULL DEFAULT 'server'",
   ownerMemberId: "TEXT NOT NULL DEFAULT ''",
+  hostAccessEnabled: 'INTEGER NOT NULL DEFAULT 0',
   connectorId: "TEXT NOT NULL DEFAULT ''",
   remoteOrigin: "TEXT NOT NULL DEFAULT ''",
   removedAt: 'INTEGER NOT NULL DEFAULT 0',

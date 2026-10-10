@@ -1,6 +1,9 @@
 import { request } from '../client'
+import type { ModelPreset } from '@/types/model-presets'
 
 export interface DisplayConfig {
+  composer_steps?: ModelPreset[]
+  composer_default_step_id?: string
   compact?: boolean
   personality?: string
   resume_display?: string
@@ -170,9 +173,10 @@ export interface MoaConfig {
   enabled: boolean
 }
 
-export async function fetchConfig(sections?: string[]): Promise<AppConfig> {
+export async function fetchConfig(sections?: string[], options?: { profile?: string }): Promise<AppConfig> {
   const query = sections ? `?sections=${sections.join(',')}` : ''
-  return request<AppConfig>(`/api/hermes/config${query}`)
+  const path = `/api/hermes/config${query}`
+  return options?.profile ? request<AppConfig>(path, { headers: { 'X-Hermes-Profile': options.profile } }) : request<AppConfig>(path)
 }
 
 export async function updateConfigSection(

@@ -1,3 +1,4 @@
+import { assertFastModeSupported } from '../fast-mode'
 import type {
   AgentMessage,
   AgentToolCall,
@@ -17,6 +18,7 @@ import { collectModelEvents, normalizeAgentReasoning } from '../messages'
 
 interface OpenAIResponsesPayload {
   model: string
+  service_tier?: 'priority'
   instructions?: string
   input: OpenAIResponseInputItem[]
   include?: ['reasoning.encrypted_content']
@@ -260,6 +262,7 @@ function normalizeStreamedResponse(
 }
 
 export function toOpenAIResponsesPayload(config: ModelProviderConfig, request: ModelRequest): OpenAIResponsesPayload {
+  assertFastModeSupported(config, request, 'openai-responses')
   const systemMessages = request.messages.filter(message => message.role === 'system')
   const tools = request.tools?.length ? request.tools.map(toOpenAIResponseTool) : undefined
   const replayableToolCallIds = new Set(
@@ -272,6 +275,7 @@ export function toOpenAIResponsesPayload(config: ModelProviderConfig, request: M
   const supportsSamplingControls = config.id !== 'openai-codex'
   return {
     model: request.model ?? config.defaultModel,
+    ...(request.fastMode === true ? { service_tier: 'priority' as const } : {}),
     instructions: systemMessages.map(message => message.content).join('\n\n') || undefined,
     ...(shouldIncludeEncryptedReasoning(config) ? { include: ['reasoning.encrypted_content'] as const } : {}),
     input: request.messages

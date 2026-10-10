@@ -97,7 +97,7 @@ function endpointIndex(catalog: ModelCatalog): Map<string, EndpointEntry[]> {
 }
 
 function modelSignature(model: CatalogModel): string {
-  return JSON.stringify([model.limit, model.cost, model.reasoning, model.reasoning_options, model.attachment, model.modalities])
+  return JSON.stringify([model.limit, model.cost, model.reasoning, model.reasoning_options, model.fast_mode, model.attachment, model.modalities])
 }
 
 function chooseMatch(matches: CatalogModelMatch[]): CatalogModelMatch | undefined {

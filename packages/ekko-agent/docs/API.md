@@ -224,6 +224,15 @@ JavaScript 运行时也会为不与根字段冲突的 Profile 安装直接属性
 
 `AgentRuntime.run(input)` 的 `input` 字段包括：必填 `messages`；可选 `signal`、`systemPrompt`、`skills`、`maxSteps`、`maxModelRetries`、`toolFailureRecoveryThreshold`、兼容字段 `maxConsecutiveToolFailures`、`toolContext`、`model`、`temperature`、`maxTokens`、`reasoningEffort`、`reasoningSummary`、`metadata`、`modelClient`、`modelDefaults`、`contextKey`、`context`、`memoryEnabled`、`memoryInput`、`backgroundDelegationEnabled`、`logContext`、`onSkillReviewUsage`、`onEvent`。同一工具连续失败达到阈值时，runtime 注入纠错指令并继续运行，不会因该阈值终止。完整方法签名见文末自动清单。
 
+`AgentRuntime.run` 和 `ModelRequest` 支持可选 `fastMode?: boolean`，与 `reasoningEffort` 独立。
+仅明确支持的 OpenAI Chat Completions / Responses 模型可启用；请求映射为
+`service_tier: "priority"`。关闭或未设置时不注入 service tier，可能的额外费用由供应商决定。
+`modelSupportsFastMode(query)` / `assertFastModeSupported(config, request, requestStyle)`
+使用官方端点和精确模型能力列表，或可信 `ModelProviderConfig.modelMetadata[model].fast_mode`
+覆盖；兼容 OpenAI 协议本身并不代表供应商支持 Fast。非支持协议/模型开启时返回明确错误，
+不静默忽略。Studio 当前仅在 Ekko API 执行路径开放此开关，原生 CLI Agent 不注入该参数。
+
+
 ## Profile `memory` 模块
 
 所有 identity/query/input 中的 `profileId` 都从类型中移除并由模块强制注入，调用者只需提供 `sessionId`。
@@ -1379,6 +1388,8 @@ export * from './model/tokens'
 
 export * from './model/types'
 
+export * from './model/fast-mode'
+
 export * from './database'
 
 export * from './config'
@@ -2304,6 +2315,21 @@ export class ModelProviderError extends Error {
 
 export function isRetryableStatus(statusCode: number): boolean
 ```
+### `src/model/fast-mode.ts`
+
+```ts
+export interface ModelFastModeQuery {
+  provider?: string
+  baseUrl?: string
+  model: string
+  requestStyle?: ModelRequestStyle
+  fastModeOverride?: boolean
+}
+
+export function modelSupportsFastMode(query: ModelFastModeQuery): boolean
+
+export function assertFastModeSupported(config: ModelProviderConfig, request: ModelRequest, requestStyle: ModelRequestStyle): void
+```
 ### `src/model/http.ts`
 
 ```ts
@@ -2690,6 +2716,7 @@ export interface ModelRequest {
   signal?: AbortSignal
   temperature?: number
   maxTokens?: number
+  fastMode?: boolean
   reasoningEffort?: ModelReasoningEffort
   reasoningSummary?: ModelReasoningSummary
   tools?: AgentToolDefinition[]
@@ -2732,6 +2759,7 @@ export interface ModelProviderConfig {
   baseUrl?: string
   endpointPath?: string
   defaultModel: string
+  modelMetadata?: Record<string, { fast_mode?: boolean }>
   headers?: Record<string, string>
   timeoutMs?: number
   capabilities?: Partial<ModelCapabilities>
@@ -2930,6 +2958,7 @@ export interface AgentRuntimeRunInput {
   model?: string
   temperature?: number
   maxTokens?: number
+  fastMode?: boolean
   reasoningEffort?: ModelRequest['reasoningEffort']
   reasoningSummary?: ModelRequest['reasoningSummary']
   metadata?: Record<string, unknown>

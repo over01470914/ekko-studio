@@ -46,6 +46,8 @@ export interface StartRunRequest {
   /** Per-session reasoning effort override.
    * Empty/undefined = use config.yaml default. */
   reasoning_effort?: string
+  /** Priority inference, independent of reasoning; only on supported models/runtimes. */
+  fast_mode?: boolean
   /** Whether completion messages from this session should be pushed. */
   push_enabled?: boolean
 }
@@ -208,6 +210,11 @@ export interface ResumeSessionPayload {
 // ============================
 
 let chatRunSocket: Socket | null = null
+// Legacy resumed events have no request ID. A shared socket must not be reused
+// for another history request for the same session: late responses would match
+// the newer request. Keep its live rooms; repeat reads get a scoped connection.
+const resumedSessionsBySocket = new WeakMap<Socket, Set<string>>()
+const pendingResumeRequests = new Map<() => void, Socket>()
 let globalListenersRegistered = false
 let chatRunSocketProfile: string | null = null
 export type ChatRunTransport = 'chat-run' | 'global-agent'
@@ -792,6 +799,9 @@ export function connectChatRun(requestedProfile?: string | null, transport: Chat
 
   // Clean up old socket to prevent duplicate event listeners
   if (chatRunSocket) {
+    for (const [cleanup, owner] of pendingResumeRequests) {
+      if (owner === chatRunSocket) cleanup()
+    }
     chatRunSocket.removeAllListeners()
     chatRunSocket.disconnect()
     globalListenersRegistered = false
@@ -899,6 +909,7 @@ export function connectChatRun(requestedProfile?: string | null, transport: Chat
 }
 
 export function disconnectChatRun(): void {
+  for (const cleanup of [...pendingResumeRequests.keys()]) cleanup()
   disconnectBackgroundStatusObservers()
   sessionEventHandlers.clear()
   if (chatRunSocket) {
@@ -938,14 +949,39 @@ export function resumeSession(
   profile?: string | null,
   transport: ChatRunTransport = 'chat-run',
 ): Socket {
-  const socket = connectChatRun(profile, transport)
-
-  const handleResumed = (data: ResumeSessionPayload) => {
-    if (data?.session_id !== sessionId) return
+  const sharedSocket = connectChatRun(profile, transport)
+  const requested = resumedSessionsBySocket.get(sharedSocket) || new Set<string>()
+  resumedSessionsBySocket.set(sharedSocket, requested)
+  const isolated = requested.has(sessionId)
+  requested.add(sessionId)
+  const socket = isolated ? io(`${getBaseUrlValue()}/${transport}`, {
+    auth: { token: getApiKey() },
+    query: { profile: chatRunSocketProfile || 'default' },
+    transports: ['websocket', 'polling'],
+    forceNew: true,
+    reconnection: false,
+    timeout: 15_000,
+  }) : sharedSocket
+  let finished = false
+  const cleanup = () => {
+    if (finished) return
+    finished = true
+    clearTimeout(timeout)
     removeSocketListener(socket, 'resumed', handleResumed)
+    removeSocketListener(socket, 'disconnect', cleanup)
+    pendingResumeRequests.delete(cleanup)
+    if (isolated) socket.disconnect()
+  }
+  const handleResumed = (data: ResumeSessionPayload) => {
+    if (finished || data?.session_id !== sessionId) return
+    cleanup()
     onResumed(data)
   }
+  // Release listeners at the store's deadline without touching live streams.
+  const timeout = setTimeout(cleanup, 15_000)
+  pendingResumeRequests.set(cleanup, sharedSocket)
   socket.on('resumed', handleResumed)
+  socket.on('disconnect', cleanup)
   socket.emit('resume', { session_id: sessionId, ...(profile ? { profile } : {}) })
 
   return socket

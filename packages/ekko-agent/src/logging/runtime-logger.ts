@@ -155,6 +155,7 @@ function requestSummary(input: EkkoModelRequestLogInput): Record<string, unknown
     ),
     toolCount: request.tools?.length || 0,
     maxTokens: request.maxTokens,
+    fastMode: request.fastMode,
     reasoningEffort: request.reasoningEffort,
     reasoningSummary: request.reasoningSummary,
   }
